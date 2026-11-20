@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS ponte_empresa_socio (   -- relação N:N
   sk_socio      integer NOT NULL REFERENCES dim_socio(sk_socio),
   qualificacao  text NOT NULL,
   data_entrada  date,
+  elegivel      boolean NOT NULL DEFAULT true,   -- RN-03
   PRIMARY KEY (cnpj_raiz, sk_socio, qualificacao)
 );
 
