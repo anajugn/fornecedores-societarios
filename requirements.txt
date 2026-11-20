@@ -8,3 +8,9 @@ sqlalchemy
 streamlit
 plotly
 networkx
+streamlit>=1.40
+pandas>=2.0
+numpy
+plotly>=5.20
+psycopg2-binary
+python-dotenv
