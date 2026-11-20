@@ -295,7 +295,7 @@ A regra padrão (administradores contam) segue o roteiro da disciplina e é a pr
 | `tests/test_unitarios.py` | 39 testes de `genero.py` e do `06` com dados sintéticos: limiar de 90% (inclusivo), cache, qualificações de RN-03, ordem de decisão da RN-05 e inversão do controle na regra estrita | 39 passaram em 20/11/2026 |
 
 A saída completa está em `docs/testes_regras.txt`. Os testes de dados são rodados de novo no congelamento do código (23/11/2026), com a base final.
-No total, são 70 testes passando em 20/11/2026.
+No total, são 78 testes passando em 20/11/2026.
 
 ---
 
