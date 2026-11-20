@@ -14,6 +14,11 @@ for p in (RAW_PNCP, INTERIM, PROCESSED):
 
 RECEITA_DIR = Path(os.getenv("RECEITA_DIR", ROOT / "data" / "raw" / "receita"))
 DATABASE_URL = os.getenv("DATABASE_URL")
+RECEITA_URL = os.getenv("RECEITA_URL", "")   # use {arquivo} no lugar do nome do arquivo
+
+
+def url_receita(arquivo):
+    return RECEITA_URL.format(arquivo=arquivo)
 
 # Recorte (justificar por escrito no README)
 DATA_INI = date.fromisoformat(os.getenv("DATA_INI", "2025-01-01"))
