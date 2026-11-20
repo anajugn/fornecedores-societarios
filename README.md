@@ -1,324 +1,377 @@
-# Contratações Públicas e Fornecedores Societários
+# Fornecedores societários: quem está por trás dos CNPJs que recebem dinheiro público
 
-Big Data e Analytics, projeto prático, tema 9.
+Trabalho de Big Data e Analytics, tema 9 (contratações públicas e fornecedores societários).
 Grupo: Afonso de Menezes Alves Neto, Ana Júlia Gusmão do Nascimento, Iago César Lacerda Santos, Pedro Lucas Felix Aragão.
 
-Pergunta central: **quem são as pessoas por trás dos CNPJs que recebem dinheiro público, e há assimetria de gênero e de cor/raça nesse controle?**
+## Sumário
+1. Problema e recorte
+2. LGPD
+3. Os 5 V's
+4. Tipos de dado e fontes
+5. Arquitetura e infraestrutura
+6. Modelo de dados
+7. Regras de negócio e testes
+8. Redução de volume
+9. Limitações
+10. Fontes e como reproduzir
 
-> **Estado em 20/11/2026 (remover na entrega).** Concluído: Terraform e banco no Aiven (reprovisionado em clone limpo), schema, inventário da Receita, tratamento dos contratos, funil do recorte, filtro da Receita, piloto de gênero e classificação de sócios e empresas, mapa de colunas e parecer de LGPD. Em andamento: coleta do PNCP de 2025. Todo número marcado como *parcial* vem de uma coleta de 01/01 a 30/04/2025 (120 dias) e será refeito com o ano fechado. `[PREENCHER]` depende de medição; `[CONFIRMAR]` depende de decisão do grupo.
+---
 
-## 1. Problema, perguntas analíticas e recorte
+## 1. Problema e recorte
 
-- **Q1** Assimetria de gênero: participação de empresas de controle feminino no valor contratado e no número de contratos.
-- **Q3** Concentração societária: quantos sócios (pessoas, não CNPJs) concentram o valor contratado; sócios em comum; vínculo com sancionados (CEIS/CNEP).
-- **Q2** Camada interseccional: gênero do controle cruzado com composição de cor/raça por proxy setorial e territorial.
+**Pergunta central:** quem são as pessoas por trás dos CNPJs que recebem dinheiro público, e há assimetria de gênero e de cor/raça nesse controle?
 
-**Coleta:** contratos publicados no PNCP de 01/01/2025 a 31/12/2025, pela API de consulta (por data de publicação), um arquivo por dia.
-
-**Recorte analítico (RN-02):** contratos de despesa, com valor global maior que zero e até R$ 1 bilhão, **assinados em 2025**, dos 50 órgãos de maior valor contratado.
-
-**Justificativa do recorte por órgão:** (1) a Receita filtrada e o `fato_contrato` precisam caber no PostgreSQL gratuito (1 GB); (2) nos dados parciais, os 50 órgãos concentram 58,2% do valor elegível com 7,3% dos contratos. O valor de N é o ponto de partida e pode subir se o tamanho medido no banco (`etl/sql/budget.sql`) permitir. `[PREENCHER: N final e tamanho medido]`
-
-**Viés de seleção declarado:** órgãos grandes (federais, estados, consórcios de saúde) pesam mais que municípios pequenos, então comparações entre UFs não representam o país.
-
-**Funil do recorte (parcial, publicados de 01/01 a 30/04/2025):**
-
-| Etapa | Contratos |
+| Pergunta | Enunciado |
 |---|---|
-| Registros brutos | 580.776 |
-| Após deduplicação por `numeroControlePNCP` | 572.866 |
-| Sem contratos de receita | 567.691 |
-| Valor global maior que zero | 563.632 |
-| Valor global até R$ 1 bilhão | 563.547 |
-| Assinados em 2025 | 460.951 |
-| Top 50 órgãos por valor | 33.672 |
-| Fornecedor PJ com CNPJ de 14 dígitos | 30.903 |
-| Fornecedor PF | 2.574 |
-| Fornecedor estrangeiro (PE) | 195 |
-| Raízes de CNPJ distintas (lista para o filtro da Receita) | 10.366 |
+| Q1 | Há assimetria de gênero na captura de recurso público por fornecedores? |
+| Q2 | Que leitura interseccional surge ao cruzar gênero do controle com cor/raça (proxy territorial)? |
+| Q3 | Quão concentrado é o controle societário dos fornecedores? |
 
-Valor elegível: R$ 160,1 bilhões. Valor dos 50 órgãos: R$ 93,2 bilhões (58,2%).
+**Recorte.** Contratos publicados no PNCP entre 01/01/2025 e 31/12/2025 (endpoint `/v1/contratos`), limitados aos 50 órgãos com maior valor contratado após o filtro de valor (RN-02). Os CNPJs dos fornecedores desses contratos (pela raiz de 8 dígitos) são cruzados com o quadro societário da Receita Federal.
 
-## 2. LGPD e dados abertos
+**Funil.**
 
-Texto completo em [`docs/lgpd.md`](docs/lgpd.md). Resumo:
-- Contratos e quadro societário são dados públicos (Lei 12.527/2011 e Decreto 8.777/2016).
-- Nome de sócio é dado pessoal mesmo sendo público: o CPF nunca é armazenado e o nome não é carregado no banco; o banco guarda um identificador derivado (hash com sal secreto). O painel só publica agregados com no mínimo 5 sócios ou empresas por recorte (RN-09).
-- Cor/raça é dado sensível (LGPD, art. 5º, II): não é inferida por pessoa, só por proxy ecológico (setor e município) atribuído ao contexto da empresa (RN-06).
-- **Caminho rejeitado:** cruzar nome de sócio com bases de cor/raça autodeclarada (por exemplo candidaturas do TSE) seria reidentificação de dado sensível.
-- Minimização na ingestão: e-mail, telefones, endereço, CEP, dados do representante legal e o campo `usuarioNome` do PNCP (quem enviou o contrato, que pode ser pessoa física) não são carregados. A razão social de empresário individual, que costuma ser o nome da pessoa, é substituída por um texto genérico no banco.
-
-## 3. Os 5 V's (números reais)
-
-| V | Número medido | Decisão do pipeline |
+| Etapa | Base parcial | Final |
 |---|---|---|
-| Volume | Receita: 7,76 GB compactado em 37 ZIP (Estabelecimentos 5,38; Empresas 1,38; Sócios 0,69; Simples 0,31; domínio menos de 0,01). Filtro da Receita: 7,45 GB lidos em streaming (Sócios, Empresas e Estabelecimentos), 171,8 milhões de linhas, 130.727 mantidas (0,076%), em cerca de 4 minutos. PNCP: 580.776 registros nos primeiros 120 dias; JSON bruto de 1,08 GB em 137 dias (média de 7,9 MB por dia); Parquet de contratos de 101,8 MB (120 dias). Estimativa linear para o ano: cerca de 1,8 milhão de contratos, 2,9 GB de JSON bruto e 310 MB de Parquet | Receita lida em streaming (nada vai para o disco); Parquet na camada analítica; o Postgres recebe só o recorte |
-| Velocidade | PNCP publica contratos todos os dias, com atraso: 98,3% dos contratos assinados fora de 2025 são de 2024, publicados em 2025; Receita atualiza mensalmente. `[PREENCHER: workflow do GitHub Actions]` | coleta incremental, retomável, um arquivo por dia; ingestão em lote agendada |
-| Variedade | CSV (Receita), JSON aninhado (PNCP) e texto livre (`objetoContrato`) | DuckDB para o JSON, Parquet para a camada analítica |
-| Veracidade | 1,4% de duplicatas no PNCP; 0,74% de valores menores ou iguais a zero; 87 contratos acima de R$ 1 bi concentrando 96,6% do valor somado (até R$ 1,1 trilhão: erro de digitação); 133 datas de assinatura impossíveis (ano 2026 ou 8406, posteriores à publicação); `valor_parcela` nulo ou zero em 32,1% dos contratos e `valor_acumulado` em 77,3%; 18 duplicatas em 200 mil linhas de sócios; 166.980 máscaras de CPF contra 192.299 pares máscara+nome (usar só a máscara fundiria cerca de 13,2% das identidades); nomes de sócio sem classificação de gênero: 5,6% no piloto de 1.000 e 4,4% nos 17.403 sócios PF do recorte parcial; cobertura da Receita sobre as raízes do recorte: Empresas e Estabelecimentos 100%, Sócios 88,5% | deduplicação por chave natural; filtros da RN-02; só `valor_global` como métrica; identificador do sócio = máscara + nome; categoria "indeterminado" em vez de forçar classe |
-| Valor | `[PREENCHER: achados da Fase 2]` | KPIs do painel |
+| Contratos coletados | [PREENCHER] | [PREENCHER] |
+| Após RN-02 | [PREENCHER] | [PREENCHER] |
+| Após recorte dos 50 órgãos | [PREENCHER] | [PREENCHER] |
+| Raízes de CNPJ distintas no recorte | 10.366 | [PREENCHER] |
+| Linhas em `fato_contrato` | 33.672 (simulação) | [PREENCHER] |
+| Contratos com fornecedor PF ou estrangeiro (raiz nula) | 2.769 | [PREENCHER] |
 
-As amostras de sócios e estabelecimentos da Receita no inventário são sequenciais (primeiras 200 mil linhas de um arquivo), não aleatórias.
+**Por que 50 órgãos.** Na base parcial, os 50 maiores órgãos concentram 58,2% do valor elegível com apenas 7,3% dos contratos. O recorte mantém a maior parte do dinheiro e cabe no plano gratuito do banco (seção 5).
 
-## 4. Tipos de dado, colunas e fontes complementares
+---
 
-### 4.1 Os três tipos, com exemplo real
+## 2. LGPD
 
-**Estruturado.** CSV da Receita (`;`, sem cabeçalho, latin-1). Sócios, com nome reduzido à inicial e máscara do CPF ocultada:
+Parecer completo em `docs/lgpd.md`. Resumo:
 
-```
-cnpj_basico  identificador_socio  nome_socio  cnpj_cpf_socio  qualificacao_socio  data_entrada_sociedade  faixa_etaria
-12340763     2                    Z***        ***######**     22                  20100805                6
-12340798     2                    D***        ***######**     22                  20170809                9
-```
+- **Base:** dados públicos (PNCP e Receita Federal), uso acadêmico, finalidade estatística.
+- **Minimização:** o banco não recebe nome de sócio nem CPF. O nome só existe em memória durante o script de classificação. O sócio é identificado por um hash (SHA-256 de `ID_SALT` + máscara do CPF + nome completo normalizado, truncado em 16 caracteres). O sal fica no `.env`, nunca no Git.
+- **Gênero** é inferido do primeiro nome (RN-04) e guardado só como categoria (F, M, I) com a confiança.
+- **Cor/raça individual não existe no projeto.** Só há proxy territorial (percentual do município). Nenhuma análise atribui cor/raça a uma pessoa.
+- **Empresário individual:** a razão social, que contém o nome da pessoa, é substituída por texto genérico no banco.
+- **Mínimo de 5 por recorte** nos painéis, para evitar reidentificação (RN-09).
+- **Cruzamento com o TSE foi rejeitado**, por permitir ligar nome a cor/raça autodeclarada de pessoas reais.
+- Arquivos intermediários com nomes de sócios existem apenas em `data/` local, fora do Git.
+- Testes automáticos conferem que os arquivos de saída não têm coluna de nome ou CPF nem valores com formato de CPF (seção 7.3).
 
-**Semi-estruturado.** JSON do PNCP, com objetos aninhados. Um contrato real, com 14 dos 41 campos:
+---
 
-```json
-{
-  "numeroControlePNCP": "04564530000113-2-000059/2024",
-  "orgaoEntidade": {"cnpj": "04564530000113", "razaoSocial": "RONDONIA SECRETARIA DE ESTADO DA EDUCACAO", "poderId": "E", "esferaId": "E"},
-  "unidadeOrgao": {"ufSigla": "RO", "municipioNome": "Porto Velho", "codigoIbge": "1100205"},
-  "tipoContrato": {"id": 8, "nome": "Outros"},
-  "categoriaProcesso": {"id": 2, "nome": "Compras"},
-  "tipoPessoa": "PJ",
-  "niFornecedor": "15086536000149",
-  "nomeRazaoSocialFornecedor": "Chez Editora LTDA",
-  "receita": false,
-  "valorGlobal": 2058500.0,
-  "valorParcela": 0.0,
-  "dataAssinatura": "2024-12-31",
-  "dataPublicacaoPncp": "2025-01-02T03:45:00",
-  "objetoContrato": "SOLUÇÃO EDUCACIONAIS TECNOLÓGICAS - LEI 14.133/2021"
-}
-```
+## 3. Os 5 V's
 
-Este contrato foi assinado em 2024 e publicado em 2025: fica fora do recorte pela RN-02. Também mostra `valorParcela` igual a zero com uma parcela. Medido nos dados parciais, `valor_parcela` é nulo ou zero em 32,1% dos contratos e `valor_acumulado` em 77,3%; o painel usa só `valor_global`.
+| V | Evidência |
+|---|---|
+| **Volume** | Receita: 37 arquivos ZIP, 7,76 GB compactados (Estabelecimentos 5,38; Empresas 1,38; Sócios 0,69; Simples 0,31; domínios menos de 0,01). PNCP: 1,08 GB de JSON em 137 dias. O filtro leu 171,8 milhões de linhas. |
+| **Velocidade** | Coleta diária, retomável, a cerca de 1,4 a 1,5 dia de dados por minuto. Filtro da Receita: 171,8 milhões de linhas em cerca de 4 minutos, por streaming. Atualização agendada: [PREENCHER: workflow do GitHub Actions]. |
+| **Variedade** | JSON (PNCP), ZIP com CSV (Receita), JSON de API (nomes IBGE), séries tabulares (SIDRA), texto livre (objeto do contrato). |
+| **Veracidade** | Contratos de receita, valores absurdos e assinaturas fora de 2025 são excluídos (RN-02). Gênero tem limiar de confiança. A cobertura de sócios é medida (88,5% das raízes na base parcial). As regras têm testes automáticos. Limitações na seção 9. |
+| **Valor** | [PREENCHER: achados de Q1, Q2 e Q3 com os números finais] |
 
-**Não estruturado.** O campo `objetoContrato`: texto livre em português, sem vocabulário controlado, em caixa alta, com referência legal embutida (exemplo acima).
+---
 
-### 4.2 Colunas usadas e descartadas
+## 4. Tipos de dado e fontes
 
-Mapa completo em [`docs/mapa_colunas.md`](docs/mapa_colunas.md). Em resumo: dos 41 campos do contrato do PNCP, 21 são lidos; da Receita ficam as colunas das regras RN-01 a RN-09, e saem endereço, telefone, e-mail, dados do representante legal e país do sócio.
+### 4.1 Tipos de dado
+
+| Tipo | Fonte | Exemplos |
+|---|---|---|
+| Semiestruturado | PNCP, `/v1/contratos` (41 campos, 21 lidos) | `numero_controle_pncp`, `orgao_cnpj`, `valor_global`, `data_assinatura` |
+| Estruturado (tabular, delimitado) | Receita Federal, CNPJ (Empresas, Estabelecimentos, Sócios, domínios) | `cnpj_basico`, `natureza_juridica`, `qualificacao_socio` |
+| Estruturado (API) | IBGE nomes v2; SIDRA 9605 | frequência por nome; população por cor/raça e município |
+| Não estruturado | Campo `objeto_contrato` do PNCP | descrição livre do que foi contratado (truncada em 500 caracteres no banco) |
+
+Colunas usadas, descartadas e a descrição de cada saída estão em `docs/mapa_colunas.md`.
+
+### 4.2 Receita Federal
+
+A URL oficial (`dadosabertos.rfb.gov.br`) estava inacessível durante o trabalho. Foi usado o espelho da Casa dos Dados (`dados-abertos-rf-cnpj.casadosdados.com.br`), que republica os arquivos da Receita. Competência: arquivos com data de 18/09/2026 [CONFIRMAR o mês em `RECEITA_URL`].
+
+O inventário foi feito por streaming, sem baixar os ZIP inteiros (`docs/inventario_receita.xlsx`).
 
 ### 4.3 Fontes complementares
 
-| Uso | Fonte | Estado |
-|---|---|---|
-| Gênero (RN-04) | API de nomes do IBGE, `api/v2/censos/nomes/{nome}?sexo=F` e `sexo=M` (Censo 2010, documentada) | Testada em 20/11/2026 (status 200): devolve a frequência de nascimentos por década e por sexo; somamos as décadas, com duas chamadas por lote de nomes. A v3 (Censo 2022) existe, mas não consta na documentação pública das APIs do IBGE. O documento da 1ª Unidade usou o Censo 2022; a troca para a v2 se justifica pela documentação e porque sócios de empresa são, em geral, adultos nascidos antes de 2010 |
-| Proxy territorial de cor/raça (RN-06) | SIDRA, Censo 2022, tabela 9605, "População residente, por cor ou raça, nos Censos Demográficos" (2010 a 2022), classificação 86 (Cor ou raça) | Confirmada em 20/11/2026: tem nível município (N6). Usar o período 2022 |
-| Proxy setorial de cor/raça (RN-06) | RAIS ou Novo CAGED (PDET), por CNAE | escopo condicional; sem CNPJ do empregador, o cruzamento é por CNAE e município, nunca por empresa |
+- **Gênero:** API de nomes do IBGE v2 (Censo 2010), documentada e estável. A v3 (Censo 2022) não consta da documentação pública. As respostas ficam em cache local (`data/interim/cache_nomes_ibge.json`), então cada nome é consultado uma só vez.
+- **Proxy territorial de cor/raça:** SIDRA, tabela 9605 (Censo 2022), variável 93 (população residente, em pessoas), classificação 86 (cor ou raça), nível município. Foram feitas 27 chamadas (uma por UF), com 5.570 municípios e 203.080.756 pessoas, todos com valor. No país, pretos e pardos somam 55,5% e brancos 43,5%. Calculamos o percentual de cada categoria e `pct_negra` (preta + parda).
+- **Tradução de município:** o código da Receita (4 dígitos) difere do código do IBGE (7 dígitos). A ligação usa nome normalizado e UF: 5.524 de 5.541 pares (99,7%) foram traduzidos, cobrindo 99,8% dos estabelecimentos.
 
-### 4.4 Piloto de gênero (RN-04)
+### 4.4 Piloto de gênero
 
-Amostra: 1.000 sócios pessoa física sorteados (semente 42) entre as 200 mil primeiras linhas de `Socios0.zip` (amostra sequencial, não aleatória), com 538 primeiros nomes distintos. Fonte: API de nomes do IBGE v2 (Censo 2010). Limiar de 90%.
+1.000 sócios PF sorteados (semente 42) das primeiras 200 mil linhas de `Socios0`, com 538 nomes distintos.
 
-| Classificação | Sócios | % |
-|---|---|---|
-| Feminino | 372 | 37,2% |
-| Masculino | 572 | 57,2% |
-| Indeterminado: ambíguo (categoria dominante abaixo de 90%) | 21 | 2,1% |
-| Indeterminado: nome ausente da base | 35 | 3,5% |
-| **Classificados / indeterminados** | 944 / 56 | 94,4% / 5,6% |
+| Resultado | % |
+|---|---|
+| Feminino | 37,2 |
+| Masculino | 57,2 |
+| Ambíguo | 2,1 |
+| Nome ausente | 3,5 |
 
-Sensibilidade ao limiar (% de indeterminados):
+Sensibilidade ao limiar de confiança (indeterminados): 80% → 4,6%; **90% → 5,6%**; 95% → 6,3%; 99% → 9,6%. O limiar de 90% foi mantido. O piloto da 1ª Unidade, que usou o Censo 2022 em outro arquivo, deu 3,7% a 90%. A diferença de 1,9 ponto não separa efeito da fonte de efeito da amostra, e fica declarada como limitação.
 
-| Limiar | Censo 2010 (este piloto) | Censo 2022 (piloto da 1ª Unidade) |
-|---|---|---|
-| 80% | 4,6% | 2,8% |
-| 90% | 5,6% | 3,7% |
-| 95% | 6,3% | 4,8% |
-| 99% | 9,6% | 8,1% |
+### 4.5 Classificação na base parcial
 
-A diferença de cerca de 2 pontos percentuais pode vir da fonte (2010 contra 2022) ou do arquivo de sócios; este piloto não separa os dois efeitos.
+17.403 sócios PF, 3.660 nomes distintos.
 
-### 4.5 Classificação na base do recorte (RN-03 a RN-05, parcial)
+| Gênero | % |
+|---|---|
+| Masculino | 64,1 |
+| Feminino | 31,5 |
+| Indeterminado (ambíguo) | 1,0 |
+| Nome ausente | 3,4 |
 
-Aplicada às 10.366 empresas do recorte parcial, a partir da Receita filtrada (`etl/06_classificar_empresas.py`). São 18.771 vínculos de sócios, dos quais 17.403 pessoas físicas, com 3.660 primeiros nomes distintos.
+Classificação do controle das 10.366 empresas (RN-03 padrão):
 
-**Gênero dos sócios pessoa física (RN-04, limiar de 90%):**
+| Classe | % |
+|---|---|
+| Masculino | 43,4 |
+| Feminino | 20,5 |
+| Misto sem maioria | 11,6 |
+| Misto com sócio PJ | 8,7 |
+| Misto por mais de 1/3 indeterminados | 4,3 |
+| Sem sócio elegível | 11,5 |
 
-| Classificação | Sócios | % |
-|---|---|---|
-| Feminino | 5.487 | 31,5% |
-| Masculino | 11.149 | 64,1% |
-| Indeterminado: ambíguo | 174 | 1,0% |
-| Indeterminado: nome ausente da base | 593 | 3,4% |
+Controle definido em 63,9% das empresas, e 32,1% delas são femininas.
 
-**Qualificações (RN-03).** As mais frequentes entre os sócios pessoa física: sócio-administrador (49) 9.825; sócio (22) 3.106; diretor (10) 1.873; administrador (05) 1.590; presidente (16) 514; conselheiro de administração (08) 414. Nenhum vínculo foi excluído por qualificação de procurador ou representante (esses dados vêm em colunas próprias de representante, descartadas). Diretor, administrador, presidente e conselheiro somam 4.391 vínculos (25,2%).
+**Sensibilidade (RN-03 estrita).** A versão estrita deixa de contar as qualificações Diretor, Presidente, Conselheiro e a qualificação exatamente "Administrador". O **Sócio-Administrador continua contando**, porque é sócio. Com ela, o controle definido cai para 58,2% e as femininas sobem para 33,8%. [ATUALIZAR com a base final]
 
-**Classificação das empresas (RN-05):**
+---
 
-| Classificação da empresa | RN-03 padrão (administradores contam) | RN-03 estrita (sem diretor, administrador, presidente e conselheiro) |
-|---|---|---|
-| Masculino, por maioria dos sócios | 4.497 (43,4%) | 3.994 (38,5%) |
-| Feminino, por maioria dos sócios | 2.129 (20,5%) | 2.040 (19,7%) |
-| Misto ou indeterminado: sem maioria | 1.206 (11,6%) | 1.142 (11,0%) |
-| Misto ou indeterminado: com sócio PJ | 897 (8,7%) | 897 (8,7%) |
-| Misto ou indeterminado: mais de um terço de indeterminados | 442 (4,3%) | 414 (4,0%) |
-| Sem sócio elegível | 1.195 (11,5%) | 1.879 (18,1%) |
-| **Controle definido (masculino ou feminino)** | 6.626 (63,9% do recorte) | 6.034 (58,2% do recorte) |
-| Entre as definidas, % femininas | 32,1% | 33,8% |
-
-**Decisão:** a regra padrão segue o roteiro (participação societária ou administração), e a estrita fica como análise de sensibilidade. `[CONFIRMAR com o grupo]`
-
-**Empresas sem sócio elegível na regra padrão (1.195):** 984 são empresários individuais (natureza jurídica 2135), 69 autarquias municipais, 39 municípios, 14 órgãos públicos municipais e 14 serviços sociais autônomos. O controle dessas empresas não é inferível pela tabela de sócios.
-
-## 5. Arquitetura, Terraform e segredos
+## 5. Arquitetura e infraestrutura
 
 ```mermaid
 flowchart TD
-    subgraph FONTES["Fontes abertas"]
-        A1["PNCP<br/>API de consulta, JSON"]
-        A2["Receita Federal<br/>CNPJ em ZIP e CSV, via espelho"]
-        A3["IBGE<br/>API de nomes, SIDRA 9605"]
-        A4["Portal da Transparência<br/>CEIS e CNEP"]
-    end
-
-    subgraph LOCAL["Processamento local: Python e DuckDB (data/, fora do Git)"]
-        B1["01 Coleta do PNCP<br/>NDJSON por dia, retomável"]
-        B2["02 Tratamento<br/>schema tipado, deduplicação, RN-01"]
-        B3["03 Recorte<br/>RN-02, top 50 órgãos, raízes de CNPJ"]
-        B4["05 Filtro da Receita<br/>streaming, só as raízes do recorte"]
-        B5["06 Classificação<br/>RN-03 a RN-05, id derivado RN-09"]
-        B6["Parquet<br/>contratos do recorte, sócios e empresas classificados"]
-    end
-
-    subgraph NUVEM["Nuvem"]
-        C0["Terraform<br/>main.tf, variables.tf, outputs.tf"]
-        C1[("PostgreSQL no Aiven free<br/>modelo estrela e tabela ponte")]
-        C2["Agregados materializados"]
-        C3["Streamlit Cloud<br/>filtro cruzado, métrica, drill-down"]
-    end
-
-    GH["GitHub Actions<br/>ETL agendado"]
-    OS["OpenSearch<br/>texto do objeto do contrato"]
-
-    A1 --> B1 --> B2 --> B3
-    B3 -->|"cnpjs_raiz.csv"| B4
-    A2 -->|"streaming, sem gravar o bruto"| B4
-    B4 --> B5
-    A3 -->|"gênero pelo primeiro nome"| B5
-    B2 --> B6
-    B3 --> B6
-    B5 --> B6
-    B6 -->|"07 Carga, só o recorte"| C1
-    A3 -->|"proxy de cor/raça por município, RN-06"| C1
-    A4 -.->|"RN-08, planejado"| C1
-    C1 --> C2 --> C3
-    C0 -.->|"provisiona"| C1
-    GH -.->|"agenda"| B1
-    C1 -.->|"escopo condicional"| OS
-
-    classDef planejado stroke-dasharray: 5 5
-    class A4,GH,OS planejado
+  A[PNCP API /v1/contratos] --> B[01 coleta diária em JSON]
+  B --> D[02 tratamento e RN-02]
+  D --> E[03 recorte: 50 órgãos]
+  R[Receita Federal via espelho] --> C[05 filtro por streaming]
+  E -->|raízes de CNPJ| C
+  C --> F[06 classificação RN-03 a RN-05]
+  I[API de nomes IBGE v2] --> F
+  S[SIDRA 9605] --> P[08 proxy de cor/raça]
+  C --> P
+  F --> G[07 carga]
+  E --> G
+  P --> G
+  T[Terraform] --> H[(PostgreSQL no Aiven)]
+  G --> H
+  H --> J[Agregados materializados]
+  J --> K[Painel Streamlit]
 ```
 
-Linhas tracejadas: itens planejados ou de escopo condicional.
+### 5.1 Infraestrutura como código
 
-- **Infraestrutura como código:** `terraform/` (`main.tf`, `variables.tf`, `outputs.tf`) cria o serviço PostgreSQL no Aiven. Provider `aiven/aiven` 4.x (versão fixada em `.terraform.lock.hcl`), plano `free-1-1gb`.
-- **Limites do plano free:** 1 CPU, 1 GB de RAM, 1 GB de disco, máximo de 20 conexões, um serviço free por organização, desligamento por inatividade.
-- **Segredos:** o token do Aiven entra só por variável de ambiente (`TF_VAR_aiven_api_token`), sem valor padrão no código. A `DATABASE_URL` e o `ID_SALT` (sal do identificador do sócio) ficam no `.env`. O `.gitignore` cobre `.env`, `*.tfstate`, `*.tfstate.*`, `.terraform/` e `*.tfvars` (o repositório tem só `.example`). O `tfstate` guarda credenciais em texto claro e nunca é versionado.
-- **Problemas encontrados e resolvidos:** o plano free passou de 5 GB para 1 GB, então o nome do plano mudou; erro 401 por token copiado errado; erro 403 porque a organização já tinha um PostgreSQL free (o limite é 1); erro 404 no clone limpo por `project_name` ainda com o texto de exemplo.
-- **Evidências:** `docs/img/aiven_running.png` (serviço Running), `docs/terraform_apply.txt` e `docs/terraform_state.txt`. Reprovisionamento em clone limpo em 20/11/2026 (`git clone`, `terraform init`, `terraform apply`), com o serviço em Running: `docs/img/aiven_running_maquina_limpa.png` e `docs/terraform_apply_maquina_limpa.txt`.
+O serviço `pg-fornecedores` é criado por Terraform (`terraform/`), no Aiven, plano `free-1-1gb`, projeto `ucsal-66ba`. O schema com 9 tabelas é aplicado por `etl/aplicar_schema.py`.
 
-## 6. Modelo de dados e por que relacional
+    cd terraform
+    copy terraform.tfvars.example terraform.tfvars    # edite project_name
+    terraform init
+    terraform apply
 
-Modelo estrela com 9 tabelas (`etl/sql/schema.sql`): `fato_contrato` (grão: um contrato) e as dimensões `dim_orgao`, `dim_fornecedor`, `dim_tempo`, `dim_cnae`, `dim_municipio`, `dim_modalidade`, `dim_socio`, mais a tabela ponte `ponte_empresa_socio`.
+O reprovisionamento foi comprovado em clone limpo (`docs/terraform_apply_maquina_limpa.txt` e `docs/img/aiven_running_maquina_limpa.png`). A primeira instância está em `docs/terraform_apply.txt`, `docs/terraform_state.txt` e `docs/img/aiven_running.png`.
 
-A relação empresa-sócio é muitos-para-muitos (um sócio em várias empresas, uma empresa com vários sócios), por isso ela não cabe numa dimensão comum e precisa da ponte. É ela que permite o agregado de gênero por empresa e a análise de rede. A ponte guarda também a marca `elegivel` (RN-03), para que o painel mostre a sensibilidade da regra.
+### 5.2 Limites do plano gratuito
 
-O contrato do PNCP não traz modalidade de licitação. A `dim_modalidade` combina `tipoContrato` e `categoriaProcesso` (por exemplo, "Outros | Compras"). O campo `numeroControlePncpCompra` liga o contrato à compra (onde estaria a modalidade), mas a compra não foi coletada. O `fato_contrato` inclui os contratos de fornecedor PF e estrangeiro com a raiz de CNPJ nula, para que o valor total do recorte feche; nos KPIs de controle, eles aparecem como categoria própria.
+- 1 GB de disco (o plano free era de 5 GB até 15/05/2025).
+- 20 conexões.
+- O serviço é desligado por inatividade. É preciso religá-lo antes da carga e da apresentação.
+- Um único PostgreSQL gratuito por organização.
+- Orçamento do projeto: banco com no máximo 600 MB, medido ao fim da carga.
 
-**Por que relacional:** a análise é feita de junções entre entidades bem definidas, com cardinalidade conhecida, e o modelo estrela responde às agregações do painel com índice em poucas colunas. O não relacional entra só onde o dado é texto sem esquema fixo (`objetoContrato`, camada opcional).
+### 5.3 Segredos
 
-**Orçamento de armazenamento (1 GB):**
+`terraform.tfvars`, `.env`, `data/` e `*.tfstate` estão no `.gitignore`. O token do Aiven vai por variável de ambiente `TF_VAR_aiven_api_token` [CONFERIR o nome em `variables.tf`]. O `.env` guarda `DATABASE_URL` e `ID_SALT`.
 
-| Camada | Onde fica |
-|---|---|
-| Receita bruta (37 ZIP) | nunca em disco; lida por streaming |
-| Contratos tratados do ano | Parquet local (DuckDB), fora do banco |
-| Receita filtrada | Parquet local; no banco só `dim_fornecedor`, `dim_socio`, `ponte` |
-| `fato_contrato` | só o recorte (cerca de 100 mil linhas no ano, extrapolando as 33.672 de 120 dias); `objeto_contrato` truncado em 500 caracteres |
-| Agregados do painel | materializados no banco |
+### 5.4 Problemas encontrados e resolvidos
 
-Regra: o banco não passa de 600 MB, medido após cada carga pelo próprio `07_carregar_aiven.py` e por `etl/sql/budget.sql`. Os índices (`etl/sql/indices.sql`) são criados depois das cargas. `[PREENCHER: tamanho medido por tabela]`
-
-## 7. Regras de negócio
-
-| Regra | Enunciado resumido | Estado |
+| Problema | Causa | Solução |
 |---|---|---|
-| RN-01 | CNPJ como texto de 14 caracteres; chave de junção com sócios é a raiz de 8 | implementada (`02_tratar_contratos.py`) |
-| RN-02 | Entram contratos de despesa (`receita = false`), valor global maior que zero e até R$ 1 bi, assinados no recorte (2025). Contratos anulados ou cancelados não podem ser excluídos: o endpoint não traz situação do contrato | implementada (`03_recorte_cnpjs.py`), com limitações declaradas |
-| RN-03 | Só sócios pessoa física com qualificação de participação ou administração (padrão); variante estrita sem diretor, administrador, presidente e conselheiro | implementada (`06`), dados parciais |
-| RN-04 | Gênero pelo primeiro nome (API de nomes do IBGE), categoria dominante com 90% ou mais; senão, indeterminado | implementada (`06`), dados parciais |
-| RN-05 | Controle da empresa por maioria de sócios elegíveis; misto ou indeterminado em empate, sócio PJ ou mais de um terço de indeterminados | implementada (`06`), dados parciais |
-| RN-06 | Proxy de cor/raça por setor (CNAE) e município, atribuído ao contexto da empresa | Fase 2 |
-| RN-07 | Concentração societária com marcação de sobreposição | Fase 2 |
-| RN-08 | Sanção vigente na data de assinatura (CEIS/CNEP) | Fase 2 |
-| RN-09 | CPF nunca armazenado; nome fora do banco (identificador derivado com sal); mínimo de 5 por recorte | identificador e carga sem nome implementados (`06` e `07`); mínimo de 5 no painel, Fase 2 |
+| 401 no Terraform | token copiado errado; depois, variável de ambiente ausente no terminal | recriar o token e definir a variável na sessão |
+| 403 ao criar o serviço | a organização já tinha um PostgreSQL gratuito | destruir o serviço antigo |
+| 404 no clone limpo | `project_name` com o texto de exemplo | editar `terraform.tfvars` |
+| URL oficial da Receita fora do ar | indisponibilidade | espelho declarado |
+| Códigos de município diferentes entre Receita e IBGE | tabelas de códigos distintas | tradução por nome normalizado e UF (99,7% dos pares) |
 
-**Justificativas já fechadas:**
-- RN-02, receita: segundo o manual do PNCP, `receita = true` é contrato em que o órgão recebe (receita), e não contrato que paga fornecedor; 5.175 contratos (0,9%) nos dados parciais.
-- RN-02, teto de R$ 1 bi: os 87 contratos acima desse valor somavam R$ 5,87 trilhões (96,6% do valor total), com valores implausíveis, até R$ 1,1 trilhão.
-- RN-02, assinatura em 2025: a API filtra por data de publicação, e 102.546 contratos publicados em 2025 foram assinados em 2024.
-- RN-03, padrão: o roteiro inclui quem administra; a variante estrita mede quanto a escolha pesa (4.391 vínculos de 17.403, 25,2%).
+---
+
+## 6. Modelo de dados
+
+Modelo estrela com 9 tabelas, definido em `etl/sql/schema.sql`.
+
+| Tabela | Papel | Linhas (simulação parcial) |
+|---|---|---|
+| `fato_contrato` | um contrato por linha, com valor, prazo e objeto | 33.672 |
+| `dim_tempo` | calendário diário (`yyyymmdd`) | 365 |
+| `dim_orgao` | órgão contratante | 50 |
+| `dim_fornecedor` | raiz de CNPJ, porte, natureza, UF, município e classificação do controle | 10.366 |
+| `dim_socio` | sócio por hash, tipo, gênero e confiança | 18.092 |
+| `ponte_empresa_socio` | relação N:N entre empresa e sócio, com `elegivel` | 18.771 |
+| `dim_municipio` | os 5.570 municípios, com população e `pct_negra` | [PREENCHER após a carga] |
+| `dim_cnae` | atividade econômica | 1.359 |
+| `dim_modalidade` | tipo de contrato e categoria do processo | 46 |
+
+Decisões do modelo:
+
+- `dim_modalidade` combina tipo de contrato e categoria do processo, porque a modalidade real da licitação está na compra, que não foi coletada.
+- A ponte é necessária porque um sócio pode estar em várias empresas e uma empresa tem vários sócios.
+- `fato_contrato` mantém fornecedor PF ou estrangeiro com `cnpj_raiz_fornecedor` nulo, para não perder valor.
+- `dim_municipio` recebe todos os municípios do Censo 2022, e não só os que aparecem nos contratos, para que o proxy racial esteja disponível a qualquer cruzamento.
+- `dim_fornecedor.codigo_ibge` vem da tradução município da Receita → IBGE (seção 4.3), o que liga o fornecedor ao proxy racial. Fornecedores sem tradução ficam com o campo nulo e fora do KPI 3.
+- `dim_cnae.pct_negra_setor` e `pct_mulher_setor` (proxy setorial, RAIS ou CAGED) existem no schema e hoje ficam vazios [PREENCHER ou remover].
+- `sancionado_na_assinatura` (RN-08) existe no schema e hoje é sempre falso [PREENCHER ou remover].
+- Os `CHECK` do schema (`tipo`, `genero`, `classificacao_controle`) são verificados antes da carga pelos testes da seção 7.3.
+
+**Orçamento de armazenamento:** o banco inteiro deve ficar abaixo de 600 MB. Tamanho final medido: [PREENCHER após a carga].
+
+---
+
+## 7. Regras de negócio e testes
+
+### 7.1 Regras
+
+| Regra | Descrição | Estado |
+|---|---|---|
+| RN-01 | O fornecedor é identificado pela raiz do CNPJ (8 dígitos). | implementada e testada |
+| RN-02 | Exclui contratos de receita; mantém `valor_global` > 0 e ≤ R$ 1 bi; exige assinatura em 2025. | implementada e testada |
+| RN-03 | Define o sócio elegível (detalhe abaixo). | implementada e testada |
+| RN-04 | Gênero pelo primeiro nome, API v2 do IBGE, limiar de 90% (abaixo disso, indeterminado). | implementada e testada |
+| RN-05 | Classifica o controle da empresa (detalhe abaixo). | implementada e testada |
+| RN-06 | Proxy territorial de cor/raça (percentuais do município, Censo 2022). | gerado pelo `08`; carga em `dim_municipio` pelo `07` |
+| RN-07 | Concentração societária. | Fase 2 |
+| RN-08 | Marca contratos com empresa sancionada (CEIS e CNEP) na assinatura. | não implementada |
+| RN-09 | Minimização de dados e mínimo de 5 por recorte nos painéis. | minimização implementada e testada; mínimo de 5 no painel: Fase 2 |
+
+**RN-02 (base parcial; atualizar com a base final).**
+
+- **Receita:** 5.175 contratos (0,9%) são de receita (no PNCP, `receita = True` é receita e `False` é despesa) e saem do recorte.
+- **Valor máximo:** 87 contratos acima de R$ 1 bi somam R$ 5,87 tri, 96,6% do valor bruto, e são tratados como erro de digitação provável.
+- **Ano de assinatura:** 102.546 contratos publicados em 2025 foram assinados em 2024 e saem do recorte.
+- **Anulados e cancelados** não podem ser excluídos, porque o endpoint não traz a situação do contrato.
+
+**RN-03: quem conta como sócio.**
+
+- Só pessoa física (PF) é elegível. Sócios PJ e estrangeiros (ES) nunca são.
+- Não contam as qualificações de representação: procurador, representante, inventariante, liquidante, interventor, tutor, curador, mãe e pai.
+- Regra padrão: administradores, diretores, presidentes e conselheiros contam.
+- Regra estrita (`--excluir-administradores`, usada como sensibilidade): saem também Diretor, Presidente, Conselheiro e a qualificação exatamente "Administrador". O Sócio-Administrador continua contando.
+- Vínculos repetidos (mesmo sócio, empresa e qualificação) são removidos.
+
+**RN-05: classificação do controle da empresa**, nesta ordem de decisão (a primeira condição verdadeira vence):
+
+| Ordem | Condição | Classe |
+|---|---|---|
+| 1 | a empresa tem algum sócio PJ no quadro (elegível ou não) | misto/indeterminado, motivo "sócio PJ" |
+| 2 | nenhum sócio elegível | sem sócio elegível |
+| 3 | mais de 1/3 dos elegíveis com gênero indeterminado | misto/indeterminado |
+| 4 | mais da metade dos elegíveis são mulheres | feminino |
+| 5 | mais da metade dos elegíveis são homens | masculino |
+| 6 | nenhum dos anteriores (por exemplo, empate) | misto/indeterminado, "sem maioria" |
+
+A ordem importa: uma empresa só com sócio PJ é "misto com sócio PJ", e não "sem sócio elegível". O `pct_indeterminados` da empresa é a parte de indeterminados entre os elegíveis.
+
+**Concentração de valor no recorte parcial.**
+
+| Contratos acima de | Quantidade | Parte do valor |
+|---|---|---|
+| R$ 10 mi | 969 | 90,8% |
+| R$ 100 mi | 179 | 63,2% |
+| R$ 500 mi | 43 | 31,7% |
+
+Por isso, os KPIs de valor usam a mediana e são apresentados com e sem contratos acima de R$ 100 mi, e a concentração é reportada como achado. [CONFIRMAR com o grupo]
+
+### 7.2 Decisão pendente
+
+A regra padrão (administradores contam) segue o roteiro da disciplina e é a principal. A estrita é sensibilidade. [CONFIRMAR com o grupo]
+
+### 7.3 Testes automáticos
+
+    pip install pytest
+    python -m pytest tests -v
+
+| Arquivo | O que verifica | Resultado |
+|---|---|---|
+| `tests/test_regras.py` | 31 testes de dados sobre os Parquet gerados: RN-01 a RN-05 recalculadas a partir dos vínculos, compatibilidade com os `CHECK` do schema, unicidade das chaves da ponte, ausência de nome e CPF (RN-09) | 31 passaram em 20/11/2026 (base parcial) |
+| `tests/test_unitarios.py` | 39 testes de `genero.py` e do `06` com dados sintéticos: limiar de 90% (inclusivo), cache, qualificações de RN-03, ordem de decisão da RN-05 e inversão do controle na regra estrita | 39 passaram em 20/11/2026 |
+
+A saída completa está em `docs/testes_regras.txt`. Os testes de dados são rodados de novo no congelamento do código (23/11/2026), com a base final.
+No total, são 70 testes passando em 20/11/2026.
+
+---
 
 ## 8. Redução de volume
 
-| Etapa | Volume |
-|---|---|
-| Receita, bruto (37 ZIP) | 7,76 GB compactado (medido) |
-| Receita lida no filtro (Sócios, Empresas, Estabelecimentos) | 7,45 GB compactados, 171,8 milhões de linhas (lista parcial de 10.366 raízes) |
-| Receita descompactada | `[PREENCHER: saída do --consolidar]` |
-| Receita após o filtro (Parquet) | `[PREENCHER: saída do --consolidar]` (130.727 linhas, 0,076% das lidas) |
-| Redução | `[PREENCHER: saída do --consolidar]` |
-| PNCP, JSON bruto (parcial) | 1,08 GB (137 dias) |
-| PNCP, `contratos.parquet` (120 dias, 572.866 contratos) | 101,8 MB |
-| PNCP, `contratos_recorte.parquet` (33.672 contratos) | 5,6 MB |
-| Banco no Aiven após a carga | `[PREENCHER: saída do 07_carregar_aiven.py]` |
+| Etapa | Antes | Depois |
+|---|---|---|
+| Receita, arquivos compactados | 7,76 GB | 7,45 GB lidos nos 3 grupos usados |
+| Receita, linhas | 171,8 milhões lidas | 130.727 mantidas (0,076%) |
+| Receita, descompactado | [PREENCHER do `--consolidar`] | [PREENCHER] |
+| Receita, Parquet final | | [PREENCHER] |
+| Fator de redução | | [PREENCHER] |
+| PNCP, JSON bruto | 1,08 GB (137 dias) | 101,8 MB em Parquet tratado |
+| Recorte de contratos | | 5,6 MB (base parcial) |
+| Proxy racial (SIDRA) | 27 chamadas de API | 5.570 municípios em um Parquet |
+| Banco no Aiven | | [PREENCHER] |
 
-## 9. Achados e limitações
+Linhas mantidas da Receita: Sócios 18.771, Empresas 10.366, Estabelecimentos 101.590. Cobertura: Empresas 100%, Estabelecimentos 100%, Sócios 88,5% (9.172 raízes com sócio e 1.194 sem).
 
-Limitações já conhecidas:
-- **Coleta por data de publicação:** contratos assinados no fim de 2025 e publicados só em 2026 ficam de fora (viés de borda direita).
-- **Sem situação do contrato:** não é possível excluir contratos anulados ou cancelados.
-- **Valores concentrados:** o teto de R$ 1 bi remove só os erros grosseiros. Entre os 15 maiores contratos do recorte há valores de R$ 769 a R$ 978 milhões, com quatro contratos de exatamente R$ 900 milhões do mesmo órgão e quatro de municípios; um consórcio soma R$ 17,6 bi em 120 contratos. Não conseguimos verificar contrato por contrato. No recorte parcial (33.672 contratos), 969 (2,9%) acima de R$ 10 milhões concentram 90,8% do valor; 179 (0,5%) acima de R$ 100 milhões concentram 63,2%; 43 (0,1%) acima de R$ 500 milhões concentram 31,7%. **Decisão:** a RN-02 não muda (teto de R$ 1 bi); os KPIs de valor são sempre apresentados com e sem os contratos acima de R$ 100 milhões (pela faixa de valor do painel), o painel usa mediana e não só média, e a concentração do valor em poucos contratos é reportada como achado. `[CONFIRMAR com o grupo]`
-- **Parcela e acumulado:** `valor_parcela` é nulo ou zero em 32,1% dos contratos e `valor_acumulado` em 77,3% (parcial); só `valor_global` é usado como métrica.
-- **Fornecedores PF e PE** (7,6% e 0,6% dos contratos do recorte parcial) ficam fora da cadeia societária e são contados à parte.
-- **Recorte por órgão:** viés para órgãos grandes.
-- **Amostras da Receita no inventário** são sequenciais: dois arquivos da mesma base deram perfis diferentes (Estabelecimentos0: 50,11% ativa e 44,25% baixada; no inventário anterior, Estabelecimentos1: 15,6% e 63,1%). Os percentuais valem só para as linhas lidas.
-- **O quadro societário da Receita é o de hoje;** os contratos são de 2025.
-- **Gênero por contagem por cabeça,** porque o percentual de participação não consta dos dados abertos.
-- **Gênero indeterminado:** 4,4% dos sócios pessoa física no recorte parcial (1,0% ambíguo e 3,4% nome ausente). Em empresas com um ou dois sócios, um único sócio indeterminado já torna a empresa `misto_indeterminado` (regra de um terço da RN-05).
-- **Controle definido em 63,9% das empresas do recorte parcial.** As demais são mistas ou indeterminadas (24,6%) ou não têm sócio elegível (11,5%).
-- **Empresários individuais:** 984 empresas (9,5% do recorte parcial) não têm sócio na base, porque o titular não consta da tabela de sócios. O gênero do titular poderia ser inferido do primeiro nome da razão social, mas isso não foi feito. `[CONFIRMAR com o grupo]`
-- **Administradores:** 25,2% dos vínculos de sócios pessoa física são de diretor, administrador, presidente ou conselheiro, que administram e não são necessariamente donos; a variante estrita da RN-03 mostra o efeito.
-- **Cor/raça por inferência ecológica** (setor e município), nunca por pessoa.
-- **Fonte da Receita:** os arquivos foram lidos de um espelho (ver seção 10).
+A redução vem do filtro por streaming (`stream_unzip`): o arquivo bruto nunca é gravado em disco.
 
-`[PREENCHER na Fase 2: achados com número]`
+---
 
-## 10. Reprodução
+## 9. Limitações
 
-Fontes e datas de acesso:
-- **PNCP:** `https://pncp.gov.br/api/consulta/v1/contratos`, acessado em `[PREENCHER: período de coleta]`.
-- **Receita Federal, dados abertos do CNPJ**, competência `[CONFIRMAR: pasta do RECEITA_URL; os arquivos do espelho têm data de 18/09/2026]`, acessado em 20/11/2026. O servidor oficial estava lento ou inacessível, então os arquivos foram lidos do espelho da Casa dos Dados (`dados-abertos-rf-cnpj.casadosdados.com.br`), cópia dos arquivos da Receita. A origem dos dados continua sendo a Receita Federal. O total (37 arquivos, 7,76 GB) coincide com a medição anterior do grupo na fonte da Receita.
-- Layout das colunas: `gov.br/receitafederal/dados/cnpj-metadados.pdf`.
-- **IBGE:** SIDRA (Censo 2022, tabela 9605) e API de nomes (`api/v2/censos/nomes`), acessados em 20/11/2026.
+- **Borda direita:** a coleta é por data de publicação, então contratos assinados no fim de 2025 e publicados depois podem faltar.
+- **Base parcial:** os números marcados acima ainda não refletem os 365 dias.
+- **Sem situação do contrato:** anulados e cancelados não são identificáveis.
+- **Valores concentrados:** poucos contratos dominam o valor total (seção 7).
+- **Valor global x parcela:** `valor_global` é o valor total contratado, não o pago, e não é acumulado por ano.
+- **Fornecedor PF ou estrangeiro:** não tem CNPJ e fica fora da análise societária.
+- **Cobertura de sócios:** 11,5% das raízes (base parcial) não têm sócio elegível. Entre elas, 984 são empresários individuais (natureza 2135), sem quadro societário na Receita.
+- **Gênero:** inferido do primeiro nome e sujeito a erro. Quem tem nome ambíguo ou ausente é indeterminado. A base do IBGE é o Censo 2010. A diferença de 1,9 ponto contra o piloto da 1ª Unidade não foi explicada.
+- **Administradores:** somam 4.391 vínculos (25,2%) e entram como controle na regra padrão. A regra estrita está como sensibilidade.
+- **Sócio PJ:** qualquer sócio PJ no quadro torna o controle "misto", mesmo que os sócios PF sejam maioria. Isso reduz o controle definido (8,7% das empresas na base parcial).
+- **Cor/raça é proxy ecológico.** O percentual descreve o município do estabelecimento, não o sócio. Qualquer leitura individual seria falácia ecológica.
+- **Tradução de município:** 17 pares (0,2% dos estabelecimentos) não foram traduzidos para o código IBGE, aparentemente por diferença de grafia, e ficam fora do KPI 3.
+- **Fonte espelho:** a Receita foi lida de um espelho, não do portal oficial.
+- **Plano gratuito:** 1 GB e desligamento por inatividade limitam o recorte e a disponibilidade.
 
-Passos:
-1. `python -m venv .venv`, ativar e `pip install -r requirements.txt`.
-2. Copiar `.env.example` para `.env` e preencher `DATABASE_URL`, `RECEITA_URL` (com `{arquivo}` no lugar do nome do arquivo) e `ID_SALT` (gerar com `python -c "import secrets; print(secrets.token_hex(16))"` e guardar; se mudar, os identificadores dos sócios mudam).
-3. `cd terraform`, copiar `terraform.tfvars.example` para `terraform.tfvars` e preencher `project_name`, definir `TF_VAR_aiven_api_token`, `terraform init`, `terraform plan`, `terraform apply` e `terraform output -raw service_uri` para a `DATABASE_URL`.
-4. `cd etl`, `python aplicar_schema.py`.
-5. Coleta: `python 01_coletar_pncp.py` (retomável; repetir até não haver falhas).
-6. Inventário da Receita: `python 00_inventario_receita.py` e `python 00b_planilha_inventario.py`.
-7. Tratamento: `python 02_tratar_contratos.py`, diagnóstico `python 02b_diagnostico.py` e recorte `python 03_recorte_cnpjs.py`.
-8. Fontes do IBGE e piloto de gênero: `python t3_checar_fontes.py` e `python 04_piloto_genero.py`.
-9. Filtro da Receita: `python 05_filtrar_receita.py --refazer` e `python 05_filtrar_receita.py --consolidar`.
-10. Classificação de sócios e empresas: `python 06_classificar_empresas.py`.
-11. Carga no banco: `python 07_carregar_aiven.py --simular`, depois `python 07_carregar_aiven.py` (use `--recarregar` para refazer).
-12. `[PREENCHER na Fase 2: proxy de cor/raça, agregados, painel]`
+---
 
-Observação: o Windows PowerShell 5.1 exibe arquivos UTF-8 com acentos quebrados quando lidos com `Get-Content`. Os arquivos estão corretos; use `Get-Content -Encoding UTF8`.
+## 10. Fontes e como reproduzir
+
+### Fontes
+
+| Fonte | Endereço | Acesso |
+|---|---|---|
+| PNCP, contratos | API `/v1/contratos` | [PREENCHER data] |
+| Receita Federal, CNPJ | espelho da Casa dos Dados (competência [CONFIRMAR]) | [PREENCHER data] |
+| IBGE, API de nomes v2 | `servicodados.ibge.gov.br/api/v2/censos/nomes` | [PREENCHER data] |
+| IBGE, SIDRA tabela 9605 | `servicodados.ibge.gov.br/api/v3/agregados/9605` | 20/11/2026 |
+
+### Estrutura do repositório
+
+    terraform/   infraestrutura (main, variables, outputs, tfvars de exemplo)
+    etl/         scripts numerados e módulos (config, receita_stream, genero)
+    etl/sql/     schema, índices e orçamento
+    tests/       testes de dados e unitários (pytest)
+    docs/        README auxiliar, lgpd, mapa de colunas, evidências, diagramas
+    data/        raw, interim e processed (fora do Git)
+
+### Passos
+
+1. `terraform apply` (seção 5.1).
+2. `python etl/aplicar_schema.py`
+3. `python etl/00_inventario_receita.py` e `python etl/00b_planilha_inventario.py`
+4. `python etl/01_coletar_pncp.py` (diário, retomável)
+5. `python etl/02_tratar_contratos.py`
+6. `python etl/03_recorte_cnpjs.py`
+7. `python etl/02b_diagnostico.py`
+8. `python etl/05_filtrar_receita.py --refazer` e depois `--consolidar`
+9. `python etl/06_classificar_empresas.py` (e, para a sensibilidade, `--excluir-administradores`)
+10. `python etl/08_proxy_racial.py` (depois do passo 8)
+11. `python -m pytest tests -v`
+12. `python etl/07_carregar_aiven.py --simular`, depois `python etl/07_carregar_aiven.py` (ou `--recarregar`)
+13. [PREENCHER: agregados materializados e painel Streamlit]
+
+Scripts auxiliares: `04_piloto_genero.py` (piloto da seção 4.4) e `t3_checar_fontes.py` (checagem das fontes).
