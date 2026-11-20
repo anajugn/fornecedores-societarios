@@ -1,0 +1,39 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.2.0, pluggy-1.7.0 -- C:\fornecedores-societarios\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\fornecedores-societarios
+collecting ... collected 31 items
+
+tests/test_regras.py::test_rn01_raiz_do_contrato_tem_8_digitos PASSED    [  3%]
+tests/test_regras.py::test_rn01_uma_linha_por_raiz_nas_empresas PASSED   [  6%]
+tests/test_regras.py::test_rn01_toda_raiz_do_recorte_tem_cadastro PASSED [  9%]
+tests/test_regras.py::test_rn02_numero_de_controle_e_unico PASSED        [ 12%]
+tests/test_regras.py::test_rn02_valor_global_positivo_e_ate_1_bi PASSED  [ 16%]
+tests/test_regras.py::test_rn02_assinatura_dentro_do_periodo PASSED      [ 19%]
+tests/test_regras.py::test_rn02_sem_contrato_de_receita PASSED           [ 22%]
+tests/test_regras.py::test_recorte_tem_no_maximo_50_orgaos PASSED        [ 25%]
+tests/test_regras.py::test_rn03_so_pessoa_fisica_e_elegivel PASSED       [ 29%]
+tests/test_regras.py::test_rn03_qualificacoes_excluidas_nao_sao_elegiveis PASSED [ 32%]
+tests/test_regras.py::test_rn03_ha_socios_elegiveis PASSED               [ 35%]
+tests/test_regras.py::test_rn03_contagens_da_empresa_conferem_com_os_vinculos PASSED [ 38%]
+tests/test_regras.py::test_rn03_tem_socio_pj_confere PASSED              [ 41%]
+tests/test_regras.py::test_rn03_vinculo_nao_se_repete PASSED             [ 45%]
+tests/test_regras.py::test_rn04_genero_so_f_m_ou_i PASSED                [ 48%]
+tests/test_regras.py::test_rn04_tipo_so_pf_pj_ou_es PASSED               [ 51%]
+tests/test_regras.py::test_rn04_confianca_entre_0_e_1 PASSED             [ 54%]
+tests/test_regras.py::test_rn04_f_ou_m_exige_confianca_no_limiar PASSED  [ 58%]
+tests/test_regras.py::test_rn04_indeterminado_pf_fica_abaixo_do_limiar PASSED [ 61%]
+tests/test_regras.py::test_rn04_nao_pf_nao_tem_genero PASSED             [ 64%]
+tests/test_regras.py::test_rn04_mesmo_socio_tem_um_so_genero_e_tipo PASSED [ 67%]
+tests/test_regras.py::test_rn05_classes_compativeis_com_o_schema PASSED  [ 70%]
+tests/test_regras.py::test_rn05_motivo_segue_a_ordem_de_decisao PASSED   [ 74%]
+tests/test_regras.py::test_rn05_classe_decorre_do_motivo PASSED          [ 77%]
+tests/test_regras.py::test_rn05_sem_socio_so_sem_elegivel_e_sem_pj PASSED [ 80%]
+tests/test_regras.py::test_rn05_pct_indeterminados_confere PASSED        [ 83%]
+tests/test_regras.py::test_rn09_sem_coluna_de_nome_ou_cpf[socios_classificados.parquet] PASSED [ 87%]
+tests/test_regras.py::test_rn09_sem_coluna_de_nome_ou_cpf[empresas_classificadas.parquet] PASSED [ 90%]
+tests/test_regras.py::test_rn09_nenhum_valor_parece_cpf[socios_classificados.parquet] PASSED [ 93%]
+tests/test_regras.py::test_rn09_nenhum_valor_parece_cpf[empresas_classificadas.parquet] PASSED [ 96%]
+tests/test_regras.py::test_rn09_identificador_do_socio_e_hash_de_16_caracteres PASSED [100%]
+
+============================= 31 passed in 2.16s ==============================
