@@ -55,7 +55,7 @@ Texto completo em [`docs/lgpd.md`](docs/lgpd.md). Resumo:
 | Volume | Receita: 7,76 GB compactado em 37 ZIP (Estabelecimentos 5,38; Empresas 1,38; Sócios 0,69; Simples 0,31; domínio menos de 0,01). PNCP: 580.776 registros nos primeiros 120 dias; JSON bruto de 1,08 GB em 137 dias (média de 7,9 MB por dia); Parquet de contratos de 101,8 MB (120 dias). Estimativa linear para o ano: cerca de 1,8 milhão de contratos, 2,9 GB de JSON bruto e 310 MB de Parquet | Receita lida em streaming (nada vai para o disco); Parquet na camada analítica; o Postgres recebe só o recorte |
 | Velocidade | PNCP publica contratos todos os dias, com atraso: 98,3% dos contratos assinados fora de 2025 são de 2024, publicados em 2025; Receita atualiza mensalmente. `[PREENCHER: workflow do GitHub Actions]` | coleta incremental, retomável, um arquivo por dia; ingestão em lote agendada |
 | Variedade | CSV (Receita), JSON aninhado (PNCP) e texto livre (`objetoContrato`) | DuckDB para o JSON, Parquet para a camada analítica |
-| Veracidade | 1,4% de duplicatas no PNCP; 0,74% de valores menores ou iguais a zero; 87 contratos acima de R$ 1 bi concentrando 96,6% do valor somado (até R$ 1,1 trilhão: erro de digitação); 133 datas de assinatura impossíveis (ano 2026 ou 8406, posteriores à publicação); `valor_parcela` nulo ou zero em 32,1% dos contratos e `valor_acumulado` em 77,3%; 18 duplicatas em 200 mil linhas de sócios; 166.980 máscaras de CPF contra 192.299 pares máscara+nome (usar só a máscara fundiria cerca de 13,2% das identidades) | deduplicação por chave natural; filtros da RN-02; só `valor_global` como métrica; identificador do sócio = máscara + nome |
+| Veracidade | 1,4% de duplicatas no PNCP; 0,74% de valores menores ou iguais a zero; 87 contratos acima de R$ 1 bi concentrando 96,6% do valor somado (até R$ 1,1 trilhão: erro de digitação); 133 datas de assinatura impossíveis (ano 2026 ou 8406, posteriores à publicação); `valor_parcela` nulo ou zero em 32,1% dos contratos e `valor_acumulado` em 77,3%; 18 duplicatas em 200 mil linhas de sócios; piloto de gênero com 5,6% de nomes indeterminados em 1.000 sócios pessoa física (limiar de 90%); 166.980 máscaras de CPF contra 192.299 pares máscara+nome (usar só a máscara fundiria cerca de 13,2% das identidades) | deduplicação por chave natural; filtros da RN-02; só `valor_global` como métrica; identificador do sócio = máscara + nome |
 | Valor | `[PREENCHER: achados da Fase 2]` | KPIs do painel |
 
 As amostras de sócios e estabelecimentos da Receita são sequenciais (primeiras 200 mil linhas de um arquivo), não aleatórias.
@@ -109,6 +109,29 @@ Mapa completo em [`docs/mapa_colunas.md`](docs/mapa_colunas.md). Em resumo: dos 
 | Proxy territorial de cor/raça (RN-06) | SIDRA, Censo 2022, tabela 9605, "População residente, por cor ou raça, nos Censos Demográficos" (2010 a 2022), classificação 86 (Cor ou raça) | Confirmada em 20/11/2026: tem nível município (N6). Usar o período 2022 |
 | Proxy setorial de cor/raça (RN-06) | RAIS ou Novo CAGED (PDET), por CNAE | escopo condicional; sem CNPJ do empregador, o cruzamento é por CNAE e município, nunca por empresa |
 
+### 4.4 Piloto de gênero (RN-04)
+
+Amostra: 1.000 sócios pessoa física sorteados (semente 42) entre as 200 mil primeiras linhas de `Socios0.zip` (amostra sequencial, não aleatória), com 538 primeiros nomes distintos. Fonte: API de nomes do IBGE v2 (Censo 2010). Limiar de 90%.
+
+| Classificação | Sócios | % |
+|---|---|---|
+| Feminino | 372 | 37,2% |
+| Masculino | 572 | 57,2% |
+| Indeterminado: ambíguo (categoria dominante abaixo de 90%) | 21 | 2,1% |
+| Indeterminado: nome ausente da base | 35 | 3,5% |
+| **Classificados / indeterminados** | 944 / 56 | 94,4% / 5,6% |
+
+Sensibilidade ao limiar (% de indeterminados):
+
+| Limiar | Censo 2010 (este piloto) | Censo 2022 (piloto da 1ª Unidade) |
+|---|---|---|
+| 80% | 4,6% | 2,8% |
+| 90% | 5,6% | 3,7% |
+| 95% | 6,3% | 4,8% |
+| 99% | 9,6% | 8,1% |
+
+A diferença de cerca de 2 pontos percentuais pode vir da fonte (2010 contra 2022) ou do arquivo de sócios; este piloto não separa os dois efeitos. A taxa final será medida sobre todos os sócios do recorte.
+
 ## 5. Arquitetura, Terraform e segredos
 
 ```mermaid
@@ -159,7 +182,7 @@ Regra: o banco não passa de 600 MB, medido com `etl/sql/budget.sql` após cada 
 | RN-01 | CNPJ como texto de 14 caracteres; chave de junção com sócios é a raiz de 8 | implementada (`02_tratar_contratos.py`) |
 | RN-02 | Entram contratos de despesa (`receita = false`), valor global maior que zero e até R$ 1 bi, assinados no recorte (2025). Contratos anulados ou cancelados não podem ser excluídos: o endpoint não traz situação do contrato | implementada (`03_recorte_cnpjs.py`), com limitações declaradas |
 | RN-03 | Só sócios pessoa física com qualificação de participação ou administração | Fase 2 |
-| RN-04 | Gênero pelo primeiro nome (API de nomes do IBGE), categoria dominante com 90% ou mais; senão, indeterminado | Fase 2 |
+| RN-04 | Gênero pelo primeiro nome (API de nomes do IBGE), categoria dominante com 90% ou mais; senão, indeterminado | piloto feito (5,6% de indeterminados em 1.000 sócios); base inteira na Fase 2 |
 | RN-05 | Controle da empresa por maioria de sócios elegíveis; misto ou indeterminado em empate, sócio PJ ou mais de um terço de indeterminados | Fase 2 |
 | RN-06 | Proxy de cor/raça por setor (CNAE) e município, atribuído ao contexto da empresa | Fase 2 |
 | RN-07 | Concentração societária com marcação de sobreposição | Fase 2 |
@@ -194,6 +217,7 @@ Limitações já conhecidas:
 - **Amostras da Receita** são sequenciais: dois arquivos da mesma base deram perfis diferentes (Estabelecimentos0: 50,11% ativa e 44,25% baixada; no inventário anterior, Estabelecimentos1: 15,6% e 63,1%). Os percentuais valem só para as linhas lidas.
 - **O quadro societário da Receita é o de hoje;** os contratos são de 2025.
 - **Gênero por contagem por cabeça,** porque o percentual de participação não consta dos dados abertos.
+- **Gênero indeterminado:** 5,6% no piloto (3,5% de nome ausente da base e 2,1% ambíguo). Em empresas com um ou dois sócios, um único sócio indeterminado já torna a empresa `misto_indeterminado` (regra de um terço da RN-05), então a taxa por empresa é maior que a por sócio. A taxa final será medida no recorte inteiro.
 - **Cor/raça por inferência ecológica** (setor e município), nunca por pessoa.
 - **Fonte da Receita:** os arquivos foram lidos de um espelho (ver seção 10).
 
@@ -215,7 +239,8 @@ Passos:
 5. Coleta: `python 01_coletar_pncp.py` (retomável; repetir até não haver falhas).
 6. Inventário da Receita: `python 00_inventario_receita.py` e `python 00b_planilha_inventario.py`.
 7. Tratamento: `python 02_tratar_contratos.py`, diagnóstico `python 02b_diagnostico.py` e recorte `python 03_recorte_cnpjs.py`.
-8. Fontes do IBGE: `python t3_checar_fontes.py`.
-9. `[PREENCHER na Fase 2: filtro da Receita, regras, carga e painel]`
+8. Fontes do IBGE e piloto de gênero: `python t3_checar_fontes.py` e `python 04_piloto_genero.py`.
+9. Filtro da Receita: `python 05_filtrar_receita.py --teste` (valida e mede a velocidade), depois `python 05_filtrar_receita.py` e `python 05_filtrar_receita.py --consolidar`.
+10. `[PREENCHER na Fase 2: regras, carga e painel]`
 
 Observação: o Windows PowerShell 5.1 exibe arquivos UTF-8 com acentos quebrados quando lidos com `Get-Content`. Os arquivos estão corretos; use `Get-Content -Encoding UTF8`.
