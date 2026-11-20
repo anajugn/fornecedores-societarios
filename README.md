@@ -128,7 +128,7 @@ flowchart LR
 - **Limites do plano free:** 1 CPU, 1 GB de RAM, 1 GB de disco, máximo de 20 conexões, um serviço free por organização, desligamento por inatividade.
 - **Segredos:** o token do Aiven entra só por variável de ambiente (`TF_VAR_aiven_api_token`), sem valor padrão no código. A `DATABASE_URL` fica no `.env`. O `.gitignore` cobre `.env`, `*.tfstate`, `*.tfstate.*`, `.terraform/` e `*.tfvars` (o repositório tem só `.example`). O `tfstate` guarda credenciais em texto claro e nunca é versionado.
 - **Problemas encontrados e resolvidos:** o plano free passou de 5 GB para 1 GB, então o nome do plano mudou; erro 401 por token copiado errado; erro 403 porque a organização já tinha um PostgreSQL free (o limite é 1).
-- **Evidências:** `docs/img/aiven_running.png` (serviço Running), `docs/terraform_apply.txt` e `docs/terraform_state.txt`.
+- **Evidências:** `docs/img/aiven_running.png` (serviço Running), `docs/terraform_apply.txt` e `docs/terraform_state.txt`. Reprovisionamento em clone limpo em 20/11/2026 (`git clone`, `terraform init`, `terraform apply`), com o serviço em Running: `docs/img/aiven_running_maquina_limpa.png` e `docs/terraform_apply_maquina_limpa.txt`.
 
 ## 6. Modelo de dados e por que relacional
 
@@ -210,7 +210,7 @@ Fontes e datas de acesso:
 Passos:
 1. `python -m venv .venv`, ativar e `pip install -r requirements.txt`.
 2. Copiar `.env.example` para `.env` e preencher `DATABASE_URL` e `RECEITA_URL` (com `{arquivo}` no lugar do nome do arquivo).
-3. `cd terraform`, definir `TF_VAR_aiven_api_token`, `terraform init`, `terraform plan`, `terraform apply` e `terraform output -raw service_uri` para a `DATABASE_URL`.
+3. `cd terraform`, copiar `terraform.tfvars.example` para `terraform.tfvars` e preencher `project_name`, definir `TF_VAR_aiven_api_token`, `terraform init`, `terraform plan`, `terraform apply` e `terraform output -raw service_uri` para a `DATABASE_URL`.
 4. `cd etl`, `python aplicar_schema.py`.
 5. Coleta: `python 01_coletar_pncp.py` (retomável; repetir até não haver falhas).
 6. Inventário da Receita: `python 00_inventario_receita.py` e `python 00b_planilha_inventario.py`.
