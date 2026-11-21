@@ -3,7 +3,7 @@
 Trabalho de Big Data e Analytics, tema 9 (contratações públicas e fornecedores societários).
 Grupo: Afonso de Menezes Alves Neto, Ana Júlia Gusmão do Nascimento, Iago César Lacerda Santos, Pedro Lucas Felix Aragão.
 
-Painel: [PREENCHER: link do Streamlit Cloud]
+Painel: https://fornecedores-societarios.streamlit.app/
 
 ## Sumário
 1. Problema e recorte
@@ -51,7 +51,7 @@ Painel: [PREENCHER: link do Streamlit Cloud]
 
 A base analítica tem 28.235 fornecedores distintos e R$ 353,3 bi em `valor_global`. O recorte tem 28.236 raízes de CNPJ: uma delas (`99999990`, 1 contrato) não existe na Receita (seção 11).
 
-**Por que 50 órgãos.** Os 50 maiores órgãos concentram R$ 362,8 bi dos R$ 690,8 bi elegíveis (52,5% do valor) com 10,3% dos contratos. O recorte mantém mais da metade do dinheiro e cabe com folga no plano gratuito do banco (102,4 MB de 1 GB).
+**Por que 50 órgãos.** Os 50 maiores órgãos concentram R$ 362,8 bi dos R$ 690,8 bi elegíveis (52,5% do valor) com 10,3% dos contratos. O recorte mantém mais da metade do dinheiro e cabe com folga no plano gratuito do banco (102,4 MB de 1 GB). O número de órgãos é um parâmetro do `03_recorte_cnpjs.py`: ampliá-lo exige refazer os passos 8 a 14 da seção 12.
 
 | Maiores órgãos do recorte | Contratos | Valor |
 |---|---:|---:|
@@ -61,7 +61,7 @@ A base analítica tem 28.235 fornecedores distintos e R$ 353,3 bi em `valor_glob
 | Ministério da Saúde | 14.932 | R$ 16,1 bi |
 | Fundação Oswaldo Cruz | 7.706 | R$ 11,4 bi |
 
-Um único órgão (CIMINAS) responde por 41% do valor do recorte. Por isso os resultados de valor são apresentados em quatro cenários (seção 9).
+Um único órgão (CIMINAS) responde por 41% do valor do recorte. Por isso os resultados de valor são apresentados em cinco cenários (seção 9).
 
 ---
 
@@ -76,7 +76,7 @@ Parecer completo em `docs/lgpd.md`. Resumo:
 - **Empresário individual:** a razão social, que contém o nome da pessoa, é substituída por texto genérico no banco.
 - **Mínimo de 5 fornecedores por recorte** no painel, para evitar reidentificação (RN-09). A classe de controle nunca aparece por empresa.
 - **Cruzamento com o TSE foi rejeitado**, por permitir ligar nome a cor/raça autodeclarada de pessoas reais.
-- Arquivos intermediários com nomes de sócios existem apenas em `data/` local, fora do Git.
+- Arquivos intermediários com nomes de sócios existem apenas em `data/` local, fora do Git, e devem ser apagados ao fim da disciplina.
 - Testes automáticos conferem que os arquivos de saída não têm coluna de nome ou CPF nem valores com formato de CPF (seção 7.3).
 
 ---
@@ -85,11 +85,11 @@ Parecer completo em `docs/lgpd.md`. Resumo:
 
 | V | Evidência |
 |---|---|
-| **Volume** | Receita: 37 arquivos ZIP, 7,76 GB compactados (Estabelecimentos 5,38; Empresas 1,38; Sócios 0,69; Simples 0,31; domínios menos de 0,01). Os 30 arquivos usados somam 7,45 GB compactados e 25,50 GB descompactados, com 171.792.838 linhas lidas. PNCP: 2.022.965 registros brutos em 365 arquivos NDJSON ([PREENCHER] GB). |
+| **Volume** | Receita: 37 arquivos ZIP, 7,76 GB compactados (Estabelecimentos 5,38; Empresas 1,38; Sócios 0,69; Simples 0,31; domínios menos de 0,01). Os 30 arquivos usados somam 7,45 GB compactados e 25,50 GB descompactados, com 171.792.838 linhas lidas. PNCP: 2.022.965 registros brutos em 365 arquivos NDJSON (3,37 GB). |
 | **Velocidade** | Filtro da Receita: 171,8 milhões de linhas em cerca de 4,3 minutos (257 s somando os arquivos), por streaming, sem gravar o bruto. Coleta do PNCP diária e retomável. Monitoramento semanal no GitHub Actions (seção 5.5). |
 | **Variedade** | JSON (PNCP), ZIP com CSV (Receita), JSON de API (nomes do IBGE), séries tabulares (SIDRA), texto livre (objeto do contrato). |
-| **Veracidade** | Contratos de receita, valores não positivos, valores acima de R$ 1 bi e assinaturas fora de 2025 são excluídos (RN-02). Gênero tem limiar de confiança. A cobertura de sócios é medida (86,7% das raízes). 78 testes automáticos conferem as regras. O próprio campo `valor_global` tem problemas (seção 11). |
-| **Valor** | Entre as empresas de controle definido, as de controle feminino são 31,5% dos fornecedores e 30% dos contratos, mas o contrato mediano delas vale 0,67 do mediano das masculinas. O 1% maior de fornecedores fica com 55,2% do valor. Detalhes e cenários na seção 9. |
+| **Veracidade** | Contratos de receita, valores não positivos, valores acima de R$ 1 bi e assinaturas fora de 2025 são excluídos (RN-02). Gênero tem limiar de confiança. A cobertura de sócios é medida (86,7% das raízes). 80 testes automáticos conferem as regras. O próprio campo `valor_global` tem problemas, e um terço do valor total está em contratos de valor repetido (seção 9.4). |
+| **Valor** | Entre as empresas de controle definido, as de controle feminino são 31,5% dos fornecedores e 30% dos contratos, mas o contrato mediano delas vale 0,67 do mediano das masculinas, em todos os cinco cenários de valor. O 1% maior de fornecedores fica com 35% a 62% do valor, conforme o cenário. Detalhes na seção 9. |
 
 ---
 
@@ -104,11 +104,11 @@ Parecer completo em `docs/lgpd.md`. Resumo:
 | Estruturado (API) | IBGE nomes v2; SIDRA 9605 | frequência por nome; população por cor/raça e município |
 | Não estruturado | Campo `objeto_contrato` do PNCP | descrição livre do que foi contratado (truncada em 500 caracteres no banco) |
 
-Colunas usadas, descartadas e a descrição de cada saída estão em `docs/mapa_colunas.md`.
+Colunas usadas, descartadas e o dicionário de dados do banco estão em `docs/mapa_colunas.md`.
 
 ### 4.2 Receita Federal
 
-A URL oficial (`dadosabertos.rfb.gov.br`) estava inacessível durante o trabalho. Foi usado o espelho da Casa dos Dados (`dados-abertos-rf-cnpj.casadosdados.com.br`), que republica os arquivos da Receita. Arquivos com data de 18/09/2026 [CONFIRMAR o mês da competência em `RECEITA_URL`].
+A URL oficial (`dadosabertos.rfb.gov.br`) estava inacessível durante o trabalho. Foi usado o espelho da Casa dos Dados (`dados-abertos-rf-cnpj.casadosdados.com.br`), que republica os arquivos da Receita. Os arquivos lidos têm data de 18/09/2026 e foram acessados em 20/11/2026.
 
 O inventário foi feito por streaming, sem baixar os ZIP inteiros (`docs/inventario_receita.xlsx`).
 
@@ -203,12 +203,12 @@ O reprovisionamento foi comprovado em clone limpo (`docs/terraform_apply_maquina
 - 1 GB de disco (o plano free era de 5 GB até 15/05/2025).
 - 20 conexões.
 - O serviço é desligado por inatividade. É preciso religá-lo antes da carga e da apresentação.
-- Um único PostgreSQL gratuito por organização.
+- Um único PostgreSQL gratuito por organização: por isso um segundo `terraform apply` com o serviço no ar falha com 403.
 - Orçamento do projeto: banco com no máximo 600 MB. Medido ao fim da carga: **102,4 MB**.
 
 ### 5.3 Segredos
 
-`terraform.tfvars`, `.env`, `data/` e `*.tfstate` estão no `.gitignore`. O token do Aiven vai por variável de ambiente `TF_VAR_aiven_api_token` [CONFERIR o nome em `variables.tf`]. O `.env` guarda `DATABASE_URL` e `ID_SALT`. No Streamlit Cloud e no GitHub Actions, a `DATABASE_URL` fica em Secrets.
+`terraform.tfvars`, `.env`, `data/` e `*.tfstate` estão no `.gitignore`. O token do Aiven vai pela variável de ambiente `TF_VAR_aiven_api_token`, que o Terraform liga à variável `aiven_api_token` de `variables.tf`. O `.env` guarda `DATABASE_URL`, `ID_SALT` e `RECEITA_URL`. No Streamlit Cloud e no GitHub Actions, a `DATABASE_URL` fica em Secrets. O token que apareceu em tela durante o trabalho foi revogado e substituído.
 
 ### 5.4 Problemas encontrados e resolvidos
 
@@ -221,16 +221,17 @@ O reprovisionamento foi comprovado em clone limpo (`docs/terraform_apply_maquina
 | Códigos de município diferentes entre Receita e IBGE | tabelas de códigos distintas | tradução por nome normalizado e UF (99,7% dos pares) |
 | Teste de raiz sem cadastro falhou | 1 CNPJ (`99999990`) do PNCP inexistente na Receita | teste tolera até 0,1% dos contratos; caso documentado |
 | Aiven criado com schema antigo, sem `ponte.elegivel` | o `CREATE TABLE IF NOT EXISTS` ignora tabela existente | o `07` aplica `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` |
+| Dúvida sobre o município do contrato | `fato_contrato.codigo_ibge` podia ser o do fornecedor | `14_checar_uf_orgao.py` mostrou que é o da unidade contratante |
 
 ### 5.5 Monitoramento agendado
 
-`.github/workflows/monitoramento.yml` roda toda segunda-feira (e a cada push na `main`): executa os testes, mede a resposta das APIs de origem e do banco (`etl/checar_saude.py`) e arquiva o log como artefato. É monitoramento, e não ingestão agendada: a coleta incremental precisaria de armazenamento entre execuções, que o runner não tem. Última execução: [CONFIRMAR após rodar o workflow].
+`.github/workflows/monitoramento.yml` roda toda segunda-feira (e a cada push na `main`): executa os testes, mede a resposta das APIs de origem e do banco (`etl/checar_saude.py`, com 3 tentativas por chamada) e arquiva o log como artefato. No runner não existe `data/`, então os 31 testes de dados são ignorados e rodam os 49 restantes. A verificação do banco só roda se o secret `DATABASE_URL` estiver cadastrado; sem ele, o log registra que foi pulada. É monitoramento, e não ingestão agendada: a coleta incremental precisaria de armazenamento entre execuções, que o runner não tem. O histórico das execuções está na aba Actions do repositório.
 
 ---
 
 ## 6. Modelo de dados
 
-Modelo estrela com 9 tabelas, definido em `etl/sql/schema.sql`. Carga por `etl/07_carregar_aiven.py`: `COPY` em uma única transação, índices criados depois, `ANALYZE` e relatório de tamanho.
+Modelo estrela com 9 tabelas, definido em `etl/sql/schema.sql` e descrito coluna a coluna em `docs/mapa_colunas.md`. Carga por `etl/07_carregar_aiven.py`: `COPY` em uma única transação, índices criados depois, `ANALYZE` e relatório de tamanho.
 
 | Tabela | Papel | Linhas | Tamanho |
 |---|---|---:|---:|
@@ -249,10 +250,11 @@ Decisões do modelo:
 
 - `dim_modalidade` combina tipo de contrato e categoria do processo, porque a modalidade real da licitação está na compra, que não foi coletada.
 - A ponte é necessária porque um sócio pode estar em várias empresas e uma empresa tem vários sócios.
-- `fato_contrato` mantém fornecedor PF, estrangeiro ou sem raiz válida com `cnpj_raiz_fornecedor` nulo, para não perder o contrato (6.532 contratos).
+- `fato_contrato` mantém fornecedor PF, estrangeiro ou sem raiz válida com `cnpj_raiz_fornecedor` nulo, para não perder o contrato (6.532 contratos: 6.531 com raiz nula na origem e 1 com raiz sem cadastro na Receita).
+- `fato_contrato.codigo_ibge` é o município da **unidade contratante**. O `14_checar_uf_orgao.py` mostrou que órgãos estaduais e municipais têm 100% dos contratos numa UF e que só 63,6% dos contratos coincidem com a UF do fornecedor. Para órgãos federais, é a unidade que assinou, e não Brasília (por exemplo, só 71,7% dos contratos do Ministério da Saúde estão no RJ).
 - `dim_municipio` recebe todos os municípios do Censo 2022, e não só os que aparecem nos contratos, para que o proxy racial esteja disponível a qualquer cruzamento.
 - `dim_fornecedor.codigo_ibge` vem da tradução município da Receita → IBGE (seção 4.3). Os 20 fornecedores sem tradução ficam fora do recorte racial.
-- `dim_cnae.pct_negra_setor`, `dim_cnae.pct_mulher_setor` (proxy setorial por RAIS ou CAGED) e `fato_contrato.sancionado_na_assinatura` (RN-08) existem no schema e **não são preenchidos**: ficaram fora do escopo.
+- `dim_cnae.pct_negra_setor`, `dim_cnae.pct_mulher_setor` (proxy setorial por RAIS ou CAGED) e `fato_contrato.sancionado_na_assinatura` (RN-08) existem no schema e **não são preenchidos**: ficaram fora do escopo (seção 11).
 - Os `CHECK` do schema (`tipo`, `genero`, `classificacao_controle`) são verificados antes da carga pelos testes da seção 7.3. A carga de 190.806 contratos passou sem violar nenhuma chave nem restrição.
 
 **Verificações da carga (`07 --simular`):** 0 vínculos fora de `dim_fornecedor`; 0 chaves repetidas em ponte, fato e fornecedor; 0 contratos com município fora de `dim_municipio`; 1 contrato com raiz sem cadastro na Receita.
@@ -279,7 +281,7 @@ Decisões do modelo:
 
 - **Receita:** 21.114 contratos (1,0%) têm `receita = True` (no PNCP, `True` é receita e `False` é despesa) e saem. Eles somam R$ 32,1 bi.
 - **Valor:** 17.133 contratos com `valor_global` ≤ 0 saem. 237 acima de R$ 1 bi saem; considerando os 241 do tratamento inicial, eles somavam R$ 17,47 tri, 95,8% do valor positivo bruto, e incluem erros evidentes de digitação (por exemplo, um contrato de R$ 6 tri da Secretaria Municipal de Cultura de São Paulo).
-- **Ano de assinatura:** 136.938 contratos saem por terem sido assinados fora de 2025. A maioria (134.374 antes de filtrar a receita e o valor) foi assinada em 2024, mas há datas absurdas (ano 8406 e 2030).
+- **Ano de assinatura:** 136.938 contratos saem por terem sido assinados fora de 2025. A maioria foi assinada em 2024, mas há datas absurdas (ano 8406 e 2030).
 - **Anulados e cancelados** não podem ser excluídos, porque o endpoint não traz a situação do contrato.
 
 **RN-03: quem conta como sócio.**
@@ -289,7 +291,7 @@ Decisões do modelo:
 - Regra padrão: administradores, diretores, presidentes e conselheiros contam.
 - Regra estrita (`--excluir-administradores`, usada como sensibilidade): saem também Diretor, Presidente, Conselheiro e a qualificação exatamente "Administrador". O Sócio-Administrador continua contando.
 - Vínculos repetidos (mesmo sócio, empresa e qualificação) são removidos (0 na base atual).
-- **Decisão:** a regra padrão segue o roteiro da disciplina e é a principal; a estrita é sensibilidade. [CONFIRMAR com o grupo]
+- **Decisão:** a regra padrão segue o roteiro da disciplina e é a principal; a estrita é sensibilidade (controle definido em 63,9% contra 58,5% das empresas, e 31,5% contra 32,7% de femininas).
 
 **RN-05: classificação do controle da empresa**, nesta ordem de decisão (a primeira condição verdadeira vence):
 
@@ -313,20 +315,20 @@ A ordem importa: uma empresa só com sócio PJ é "misto com sócio PJ", e não 
 | R$ 100 mi | 797 | 63,9% |
 | R$ 500 mi | 141 | 24,8% |
 
-Menos de 0,5% dos contratos carrega quase dois terços do valor. Por isso os resultados de valor são sempre acompanhados de contagem e mediana, e apresentados em quatro cenários (seção 9). O painel tem filtros para excluir contratos acima de R$ 100 mi e o CIMINAS.
+Menos de 0,5% dos contratos carrega quase dois terços do valor. Por isso os resultados de valor são sempre acompanhados de contagem e mediana, e apresentados em cinco cenários (seção 9). O painel tem filtros para excluir contratos acima de R$ 100 mi, o CIMINAS e os valores possivelmente replicados.
 
 ### 7.3 Testes automáticos
 
     pip install pytest
     python -m pytest tests -v
 
-| Arquivo | O que verifica | Resultado |
-|---|---|---|
-| `tests/test_regras.py` | 31 testes de dados sobre os Parquet gerados: RN-01 a RN-05 recalculadas a partir dos vínculos, compatibilidade com os `CHECK` do schema, unicidade das chaves da ponte, ausência de nome e CPF (RN-09) | passaram |
-| `tests/test_unitarios.py` | 39 testes de `genero.py` e do `06` com dados sintéticos: limiar de 90% (inclusivo), cache, qualificações da RN-03, ordem de decisão da RN-05 e inversão do controle na regra estrita | passaram |
-| `tests/test_painel_dados.py` | 8 testes da camada de dados do painel (dados fictícios): colunas, classes, RN-02, faixas, reprodutibilidade | passaram |
+| Arquivo | O que verifica | Testes |
+|---|---|---:|
+| `tests/test_regras.py` | dados reais: RN-01 a RN-05 recalculadas a partir dos vínculos, compatibilidade com os `CHECK` do schema, unicidade das chaves da ponte, ausência de nome e CPF (RN-09) | 31 |
+| `tests/test_unitarios.py` | `genero.py` e `06` com dados sintéticos: limiar de 90% (inclusivo), cache, qualificações da RN-03, ordem de decisão da RN-05 e inversão do controle na regra estrita | 39 |
+| `tests/test_painel_dados.py` | camada de dados do painel: colunas, classes, RN-02, faixas, reprodutibilidade e marcação de valor replicado | 10 |
 
-**78 testes passando** em 20/11/2026, com a base completa. Saída em `docs/testes_regras.txt`. Os testes de dados são rodados de novo no congelamento do código (23/11/2026).
+**80 testes passando** em 20/11/2026, com a base completa. Saída em `docs/testes_regras.txt`. Os testes de dados são rodados de novo no congelamento do código (23/11/2026).
 
 ---
 
@@ -340,16 +342,16 @@ Menos de 0,5% dos contratos carrega quase dois terços do valor. Por isso os res
 | Receita, descompactado | 25,50 GB | 4,1 MB em Parquet |
 | Receita, linhas | 171.792.838 lidas | 227.138 mantidas (0,1322%) |
 | **Fator de redução da Receita** | | **6.181×** sobre o descompactado; 1.806× sobre o compactado |
-| PNCP, JSON bruto | [PREENCHER] GB (2.022.965 registros) | [PREENCHER] MB em Parquet tratado |
-| PNCP, recorte | | 190.806 contratos |
-| Proxy racial (SIDRA) | 27 chamadas de API | 5.570 municípios em um Parquet |
+| PNCP, JSON bruto | 3,37 GB (2.022.965 registros) | 372,8 MB em Parquet tratado (cerca de 9× menor) |
+| PNCP, recorte | | 190.806 contratos, 29,7 MB em Parquet |
+| Proxy racial (SIDRA) | 27 chamadas de API | 5.570 municípios em um Parquet de 0,2 MB |
 | Banco no Aiven | | 102,4 MB |
 
-Linhas mantidas da Receita: Sócios 51.393 (1,6 MB), Empresas 28.235 (0,9 MB), Estabelecimentos 147.510 (1,6 MB). Cobertura sobre as 28.236 raízes do recorte: Empresas e Estabelecimentos 100% (28.235), Sócios 86,7% (24.480 raízes). A redução vem do filtro por streaming (`stream_unzip`): o arquivo bruto nunca é gravado em disco.
+Linhas mantidas da Receita: Sócios 51.393 (1,6 MB), Empresas 28.235 (0,9 MB), Estabelecimentos 147.510 (1,6 MB). Cobertura sobre as 28.236 raízes do recorte: Empresas e Estabelecimentos 100% (28.235), Sócios 86,7% (24.480 raízes). A redução da Receita vem do filtro por streaming (`stream_unzip`): o arquivo bruto nunca é gravado em disco.
 
 ### 8.2 Teste comparativo: Pandas × PostgreSQL
 
-Três consultas rodadas de quatro formas, mediana de 5 repetições, na mesma máquina (`etl/09_teste_comparativo.py`; saída em `docs/teste_comparativo.md`). O script confere se as quatro formas devolvem o mesmo resultado antes de comparar tempos: **os resultados conferiram nas três consultas**.
+Três consultas rodadas de quatro formas, mediana de 5 repetições, na mesma máquina (`etl/09_teste_comparativo.py`; saída em `docs/teste_comparativo.md`). O script confere se as quatro formas devolvem o mesmo resultado antes de comparar tempos: **os resultados bateram nas três consultas**.
 
 | Consulta | Pandas (lê Parquet e calcula) | Pandas (em memória) | PostgreSQL (junções) | PostgreSQL (agregado materializado) |
 |---|---:|---:|---:|---:|
@@ -372,7 +374,7 @@ Usamos os dois, cada um onde faz sentido:
 
 - **Camada bruta em arquivos:** o JSON do PNCP (41 campos, esquema que pode mudar) fica em NDJSON e a Receita é lida por streaming. Aqui o esquema flexível e o custo baixo de armazenamento pesam mais do que a consulta.
 - **Camada analítica em PostgreSQL:** o modelo é um conjunto de entidades ligadas por chaves, com uma relação N:N (empresa e sócio: 51.393 vínculos, 1.596 sócios em 2 ou mais fornecedores). As perguntas Q1 a Q3 são junções e agregações. Em um banco de documentos, a relação N:N exigiria duplicar dados ou fazer buscas aninhadas, e a integridade ficaria por conta do código.
-- **O que o banco entregou:** as chaves e os `CHECK` aceitaram 190.806 contratos sem erro; a ponte impede vínculo duplicado; os índices e os agregados dão consultas de resumo praticamente limitadas pela rede; vários acessos ao painel não exigem que cada um carregue os arquivos.
+- **O que o banco entregou:** as chaves e os `CHECK` aceitaram 190.806 contratos sem erro; a ponte impede vínculo duplicado; os agregados dão consultas de resumo praticamente limitadas pela rede; vários acessos ao painel não exigem que cada um carregue os arquivos.
 - **O que o banco não entregou:** velocidade bruta nesta escala. O argumento a favor do banco é integridade, compartilhamento e escala futura, não tempo de consulta.
 
 ---
@@ -391,21 +393,22 @@ Valor por classe de controle: feminino 12,6%; masculino 50,7%; misto/indetermina
 | Sem contratos acima de R$ 100 mi | 183.496 | R$ 128,0 bi | 26,9 | 30,0 | 31,7 | 0,68 |
 | Sem o CIMINAS | 183.207 | R$ 204,5 bi | 24,2 | 30,0 | 31,7 | 0,68 |
 | Sem os dois | 182.872 | R$ 111,0 bi | 27,9 | 30,0 | 31,8 | 0,68 |
+| Sem valores possivelmente replicados | 183.299 | R$ 235,2 bi | 17,4 | 29,9 | 31,3 | 0,67 |
 
-**Leitura.** Contagens e medianas quase não mudam entre os cenários: empresas de controle feminino são cerca de 30% dos contratos e o contrato mediano delas vale cerca de dois terços do das masculinas. A parcela do valor oscila (19,9% a 27,9%) porque poucos contratos gigantes dominam o total. O achado mais firme é o tamanho do contrato, e não o acesso: os 31,5% descrevem só os fornecedores do recorte e não têm baseline externo, então não dá para dizer que há menos mulheres do que o esperado sem comparar com a base inteira da Receita, que não foi carregada.
+**Leitura.** Contagens e medianas quase não mudam entre os cinco cenários: empresas de controle feminino são cerca de 30% dos contratos e o contrato mediano delas vale cerca de dois terços do das masculinas. A parcela do valor oscila (17,4% a 27,9%) porque poucos contratos gigantes e valores repetidos dominam o total. O achado mais firme é o tamanho do contrato, e não o acesso: os 31,5% descrevem só os fornecedores do recorte e não têm baseline externo, então não dá para dizer que há menos mulheres do que o esperado sem comparar com a base inteira da Receita, que não foi carregada.
 
 ### 9.2 Q2: composição racial do município do fornecedor (proxy territorial)
 
-Fornecedores de controle definido, por faixa de pretos e pardos no município do fornecedor (Censo 2022). 184.239 contratos têm município traduzido.
+Fornecedores de controle definido, por faixa de pretos e pardos no município do fornecedor (Censo 2022). 184.239 contratos têm município traduzido. Fornecedores e razão das medianas são da base inteira.
 
-| Faixa de pretos e pardos | Fornecedores | % do valor feminino | Razão das medianas | % do valor feminino sem contratos > R$ 100 mi | Razão sem > R$ 100 mi |
+| Faixa de pretos e pardos | Fornecedores | Razão das medianas (F ÷ M) | % do valor feminino: todos | sem > R$ 100 mi | sem replicados |
 |---|---:|---:|---:|---:|---:|
-| até 30% | 2.816 | 25,7 | 0,34 | 31,2 | 0,35 |
-| 30% a 50% | 5.381 | 18,2 | 0,63 | 32,0 | 0,64 |
-| 50% a 70% | 6.920 | 21,5 | 0,60 | 23,2 | 0,61 |
-| 70% ou mais | 2.909 | 13,1 | 1,19 | 17,1 | 1,20 |
+| até 30% | 2.816 | 0,34 | 25,7 | 31,2 | 17,4 |
+| 30% a 50% | 5.381 | 0,63 | 18,2 | 32,0 | 15,5 |
+| 50% a 70% | 6.920 | 0,60 | 21,5 | 23,2 | 20,0 |
+| 70% ou mais | 2.909 | 1,19 | 13,1 | 17,1 | 13,1 |
 
-**Leitura.** A razão das medianas é estável entre os cenários, mas **não forma um gradiente**: a maior distância está na faixa até 30% (mediana feminina a um terço da masculina) e há inversão em 70% ou mais. A parcela do valor feminino oscila muito (na faixa de 30% a 50% vai de 18,2% a 32,0% ao retirar os contratos gigantes). As faixas funcionam como regiões do país misturadas com tipo de contrato e órgão. O resultado é um padrão territorial descritivo, sem leitura causal e sem nenhuma afirmação sobre a cor ou raça dos sócios.
+**Leitura.** A razão das medianas varia no máximo 0,02 entre os três cenários, mas **não forma um gradiente**: a maior distância está na faixa até 30% (mediana feminina a um terço da masculina) e há inversão em 70% ou mais. A parcela do valor feminino oscila muito (na faixa de 30% a 50% vai de 15,5% a 32,0% conforme o cenário). As faixas funcionam como regiões do país misturadas com tipo de contrato e órgão. O resultado é um padrão territorial descritivo, sem leitura causal e sem nenhuma afirmação sobre a cor ou raça dos sócios.
 
 ### 9.3 Q3: concentração
 
@@ -415,28 +418,36 @@ Fornecedores de controle definido, por faixa de pretos e pardos no município do
 | Sem contratos acima de R$ 100 mi | 27.929 | 5,2% | 34,7% (279) | 0,923 | 11 |
 | Sem o CIMINAS | 27.660 | 9,8% | 56,3% (277) | 0,952 | 23 |
 | Sem os dois | 27.541 | 6,0% | 37,9% (275) | 0,926 | 13 |
+| Sem valores possivelmente replicados | 27.652 | 9,1% | 62,3% (277) | 0,959 | 24 |
 
-**Leitura.** A desigualdade do valor entre fornecedores é muito alta (Gini acima de 0,92 em todos os cenários), mas nenhum fornecedor domina (os 10 maiores ficam com 5% a 10%). O HHI é calculado sobre fornecedores de mercados diferentes: ele indica que ninguém domina, e não que o mercado seja competitivo.
+**Leitura.** A desigualdade do valor entre fornecedores é muito alta (Gini acima de 0,92 em todos os cenários), mas nenhum fornecedor domina (os 10 maiores ficam com 5% a 10%). O 1% maior fica entre 34,7% e 62,3% do valor, conforme o cenário. Sem os valores replicados a concentração **sobe**: o teto repetido em cada contrato inflava o total de centenas de fornecedores médios (por exemplo, os 198 do consórcio do Paraná). Essa explicação é provável e não foi testada. O HHI é calculado sobre fornecedores de mercados diferentes: ele indica que ninguém domina, e não que o mercado seja competitivo.
 
 **Concentração societária.** Dos 46.219 sócios elegíveis, 1.596 (3,5%) aparecem em 2 ou mais fornecedores do recorte, com máximo de 10. O número é um piso, porque conta só os fornecedores dos 50 órgãos, e pode estar um pouco inflado por homônimos (o identificador usa a máscara do CPF e o nome, seção 11).
 
 ### 9.4 Cuidados com `valor_global`
 
-O diagnóstico `etl/11_diagnostico_repetidos.py` encontrou 53 grupos de contratos do mesmo órgão com o mesmo valor (≥ R$ 10 mi) e 3 ou mais fornecedores diferentes. Eles somam R$ 118,1 bi, 33,4% do valor. O maior é um credenciamento de pavimentação do CIMINAS: 46 contratos com 26 fornecedores, todos com R$ 581.465.112,02 e objeto igual. Isso indica que o `valor_global` pode ser o teto do credenciamento ou da ata repetido em cada contrato, e não a parte de cada fornecedor. É um indício forte para o CIMINAS e ainda não foi verificado para os demais grupos (por exemplo, o consórcio de saúde do Paraná, com 202 contratos de R$ 71,4 mi). Nenhum contrato foi excluído por isso. Por esse motivo, mediana e contagem são as medidas principais, e os valores totais devem ser lidos como limite superior.
+O diagnóstico `etl/12_verificar_grupos.py` encontrou 53 grupos de contratos do mesmo órgão com o mesmo valor (≥ R$ 10 mi) em 3 ou mais fornecedores. Em 49 deles (933 contratos, R$ 112,6 bi, 31,9% do valor) o objeto é idêntico, o que indica o teto de um credenciamento ou ata repetido em cada contrato. O maior é do CIMINAS (46 contratos, 26 fornecedores, R$ 581,5 mi cada), e o consórcio de saúde do Paraná tem 202 contratos de R$ 71,4 mi em 198 fornecedores. Em 2 grupos (27 contratos, R$ 5,3 bi) os objetos diferem e podem ser legítimos (Comando do Exército e FCDF), e em 2 (15 contratos, R$ 0,2 bi) são quase iguais.
+
+A marcação do painel cobre os 53 grupos: 975 contratos, R$ 118,1 bi, 33,4% do valor. Ela é conservadora, porque inclui os 42 contratos de objetos diferentes ou quase iguais. É um indício, não uma confirmação. Nenhum contrato foi excluído da base; o painel e o `10_achados.py` oferecem o cenário sem eles. Por isso a contagem e a mediana são as medidas principais, e os valores totais devem ser lidos como limite superior.
+
+### 9.5 Conferência manual
+
+Dois KPIs foram refeitos em planilha, fora do código, a partir de dados exportados por `etl/13_exportar_conferencia.py`: o percentual do valor com controle feminino (19,867%) e os sócios em 2 ou mais fornecedores (1.596 de 46.219). Os valores coincidem com os do banco e do painel (`docs/conferencia_manual.md`).
 
 ---
 
 ## 10. Painel
 
-Streamlit (`app/app.py`, camada de dados em `app/dados.py`), com Plotly. Link: [PREENCHER]. Estado: [CONFIRMAR: testado em modo banco].
+Streamlit (`app/app.py`, camada de dados em `app/dados.py`), com Plotly. Publicado em https://fornecedores-societarios.streamlit.app/, em modo banco (PostgreSQL do Aiven) desde 20/11/2026.
 
-- **Duas fontes com o mesmo formato:** `PAINEL_FONTE = ficticio` (padrão, com aviso fixo no topo) ou `banco` (PostgreSQL do Aiven, com `DATABASE_URL`). Em modo fictício, nenhum número descreve algo real.
+- **Duas fontes com o mesmo formato:** `PAINEL_FONTE = ficticio` (padrão, com aviso fixo no topo) ou `banco` (com `DATABASE_URL`, em Secrets no Streamlit Cloud). Em modo fictício, nenhum número descreve algo real.
 - **KPIs do topo:** contratos, fornecedores, valor contratado e valor mediano.
 - **Abas:** Gênero do controle (Q1), Interseccional (Q2), Concentração (Q3) e Drill-down.
 - **Filtro cruzado:** clicar nas barras de gênero ou de UF filtra todo o painel, com botão para limpar a seleção.
 - **Seletor de métrica:** valor contratado, número de contratos ou valor mediano.
-- **Filtros laterais:** UF do órgão, UF do fornecedor, órgão, porte, faixa de valor, meses, e as caixas "Excluir contratos acima de R$ 100 mi" e "Excluir o CIMINAS".
-- **Drill-down:** UF do órgão, depois órgão, depois os 50 maiores contratos.
+- **Filtros laterais:** UF do órgão (a UF da unidade contratante), UF do fornecedor, órgão, porte, faixa de valor e meses.
+- **Cenários de valor:** caixas para excluir contratos acima de R$ 100 mi, o CIMINAS e os valores possivelmente replicados. Com algum cenário ativo, um aviso no topo lembra que os números não são os da base inteira.
+- **Drill-down:** UF, depois órgão, depois os 50 maiores contratos, com a marca de valor possivelmente replicado.
 - **RN-09:** grupos com menos de 5 fornecedores ficam ocultos; a classe de controle nunca aparece por empresa; a aba Interseccional avisa que o percentual racial é do município.
 - **Desempenho:** a consulta traz 184 mil contratos e é guardada em cache por 1 hora. Os agregados materializados ainda não são usados pelo painel.
 - **Disponibilidade:** o plano gratuito do Aiven desliga por inatividade. Se o banco estiver desligado, o painel explica o erro em vez de quebrar.
@@ -445,13 +456,14 @@ Streamlit (`app/app.py`, camada de dados em `app/dados.py`), com Plotly. Link: [
 
 ## 11. Limitações
 
-- **`valor_global` não é o valor pago** e pode repetir o teto de credenciamento ou da ata em vários contratos (seção 9.4). Totais de valor são limite superior.
-- **Valores concentrados:** 797 contratos acima de R$ 100 mi (0,4%) carregam 63,9% do valor, e o CIMINAS sozinho responde por 41%. Por isso há quatro cenários e a mediana como medida principal.
+- **`valor_global` não é o valor pago** e pode repetir o teto de credenciamento ou da ata em vários contratos: 33,4% do valor está em grupos de valor repetido (seção 9.4). Totais de valor são limite superior.
+- **Valores concentrados:** 797 contratos acima de R$ 100 mi (0,4%) carregam 63,9% do valor, e o CIMINAS sozinho responde por 41%. Por isso há cinco cenários e a mediana como medida principal.
 - **Borda direita:** a coleta é por data de publicação, então contratos assinados no fim de 2025 e publicados depois podem faltar. Por outro lado, 136.938 contratos publicados em 2025 foram assinados em outros anos e foram excluídos.
 - **Sem situação do contrato:** anulados e cancelados não são identificáveis.
 - **Campos incompletos:** 29,7% dos contratos não têm `valor_parcela` e 76,3% não têm `valor_acumulado`.
 - **Valores com erro de digitação:** o teto de R$ 1 bi elimina os mais absurdos, mas não garante que todo valor abaixo dele esteja correto.
-- **Fornecedor PF, estrangeiro ou sem raiz válida:** 6.531 contratos (3,4% do recorte) não têm CNPJ e ficam fora da análise societária. Um contrato (R$ 243.162,50, Estado de Goiás, 29/05/2025) tem a raiz `99999990`, provável erro de digitação ou CNPJ de teste no PNCP, e também fica fora.
+- **UF do órgão é a da unidade contratante:** para órgãos federais, que assinam em várias unidades, não é Brasília (seção 6).
+- **Fornecedor PF, estrangeiro ou sem raiz válida:** 6.532 contratos (3,4% do recorte) não entram na análise societária: 6.531 não têm CNPJ e 1 (R$ 243.162,50, Estado de Goiás, 29/05/2025) tem a raiz `99999990`, provável erro de digitação ou CNPJ de teste no PNCP.
 - **Cobertura de sócios:** 13,3% das empresas (3.756) não têm sócio elegível, e 87,9% delas são empresários individuais, que não têm quadro societário na Receita.
 - **Gênero:** inferido do primeiro nome e sujeito a erro. Nome ambíguo ou ausente vira indeterminado (4,3% dos sócios PF). A base do IBGE é o Censo 2010. A diferença de 1,9 ponto contra o piloto da 1ª Unidade não foi explicada.
 - **Sem baseline externo para Q1:** os 31,5% de fornecedores de controle feminino descrevem só o recorte. Comparar com a população de empresas exigiria carregar a base inteira da Receita.
@@ -473,8 +485,8 @@ Streamlit (`app/app.py`, camada de dados em `app/dados.py`), com Plotly. Link: [
 
 | Fonte | Endereço | Acesso |
 |---|---|---|
-| PNCP, contratos | API `/v1/contratos` | coleta concluída em 20/11/2026 (início: [PREENCHER]) |
-| Receita Federal, CNPJ | espelho da Casa dos Dados (competência [CONFIRMAR]) | 20/11/2026 |
+| PNCP, contratos | API `/v1/contratos` | coleta entre agosto e 20/11/2026 |
+| Receita Federal, CNPJ | espelho da Casa dos Dados (arquivos de 18/09/2026) | 20/11/2026 |
 | IBGE, API de nomes v2 | `servicodados.ibge.gov.br/api/v2/censos/nomes` | 20/11/2026 |
 | IBGE, SIDRA tabela 9605 | `servicodados.ibge.gov.br/api/v3/agregados/9605` | 20/11/2026 |
 
@@ -485,7 +497,7 @@ Streamlit (`app/app.py`, camada de dados em `app/dados.py`), com Plotly. Link: [
     etl/sql/     schema, índices, orçamento e agregados materializados
     app/         painel Streamlit (app.py e dados.py)
     tests/       testes de dados, unitários e do painel (pytest)
-    docs/        lgpd, mapa de colunas, inventário, evidências, testes, teste comparativo, diagramas
+    docs/        lgpd, mapa de colunas e dicionário, inventário, testes, teste comparativo, conferência manual, notas do pitch
     .github/     workflow de monitoramento
     data/        raw, interim e processed (fora do Git)
 
@@ -506,6 +518,8 @@ Streamlit (`app/app.py`, camada de dados em `app/dados.py`), com Plotly. Link: [
 13. `python etl/07_carregar_aiven.py --simular`, depois `python etl/07_carregar_aiven.py` (ou `--recarregar`)
 14. `python etl/09_teste_comparativo.py` (cria os agregados e mede os tempos)
 15. `python etl/10_achados.py` e `python etl/11_diagnostico_repetidos.py`
-16. `streamlit run app/app.py` (modo fictício) ou, com `PAINEL_FONTE=banco`, contra o Aiven
+16. `python etl/12_verificar_grupos.py` e `python etl/14_checar_uf_orgao.py`
+17. `python etl/13_exportar_conferencia.py` (dados para a conferência manual em planilha, `docs/conferencia_manual.md`)
+18. `streamlit run app/app.py` (modo fictício) ou, com `PAINEL_FONTE=banco`, contra o Aiven
 
-Scripts auxiliares: `04_piloto_genero.py` (piloto da seção 4.4), `t3_checar_fontes.py` (checagem das fontes) e `checar_saude.py` (monitoramento). 
+Scripts auxiliares: `04_piloto_genero.py` (piloto da seção 4.4), `t3_checar_fontes.py` (checagem das fontes) e `checar_saude.py` (monitoramento).
