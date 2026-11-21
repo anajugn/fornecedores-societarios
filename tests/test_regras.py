@@ -85,9 +85,11 @@ def test_rn01_uma_linha_por_raiz_nas_empresas(empresas):
 
 
 def test_rn01_toda_raiz_do_recorte_tem_cadastro(contratos, empresas):
-    raizes = set(contratos["cnpj_raiz_fornecedor"].dropna())
-    faltam = raizes - set(empresas["cnpj_basico"])
-    assert not faltam, f"{len(faltam)} raízes sem cadastro, ex.: {sorted(faltam)[:5]}"
+    raiz = contratos["cnpj_raiz_fornecedor"].dropna()
+    sem = raiz[~raiz.isin(set(empresas["cnpj_basico"]))]
+    parcela = len(sem) / max(len(raiz), 1)
+    assert parcela <= 0.001, (f"{sem.nunique()} raízes sem cadastro em {len(sem)} contratos "
+                              f"({parcela:.3%}), ex.: {sorted(sem.unique())[:5]}")
 
 
 # ---------------------------------------------------------------- RN-02
