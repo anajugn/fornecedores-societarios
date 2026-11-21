@@ -53,7 +53,11 @@ def main():
     cen = {"todos os contratos": d,
            "sem contratos acima de R$ 100 mi": d[d["valor"] <= TETO],
            "sem o CIMINAS": d[~cim],
-           "sem os dois": d[(d["valor"] <= TETO) & ~cim]}
+           "sem os dois": d[(d["valor"] <= TETO) & ~cim],
+           "sem valores possivelmente replicados": d[~d["valor_replicado"]]}
+    rep = d[d["valor_replicado"]]
+    print(f"valores possivelmente replicados: {len(rep):,} contratos, "
+          f"R$ {rep['valor'].sum() / 1e9:,.1f} bi ({100 * rep['valor'].sum() / d['valor'].sum():.1f}% do valor)")
 
     print(f"base do painel: {len(d):,} contratos, {d['cnpj_raiz'].nunique():,} fornecedores, "
           f"R$ {d['valor'].sum() / 1e9:,.1f} bi")
@@ -71,7 +75,7 @@ def main():
               f"% dos fornecedores {pct_forn_fem(x):.1f} | razão das medianas F/M {razao_medianas(x):.2f}")
 
     print("\n== Q2: por composição racial do município do fornecedor (proxy territorial) ==")
-    for nome in ("todos os contratos", "sem contratos acima de R$ 100 mi"):
+    for nome in ("todos os contratos", "sem contratos acima de R$ 100 mi", "sem valores possivelmente replicados"):
         x = cen[nome]
         x = x[x["faixa_negra"] != dados.SEM_DADO]
         print(f"{nome} ({len(x):,} contratos com município traduzido)")

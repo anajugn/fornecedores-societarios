@@ -50,3 +50,17 @@ def test_mesma_semente_gera_os_mesmos_dados():
     a = dados.ficticio(n_forn=200, n_contr=500, n_socios=300)[0]
     b = dados.ficticio(n_forn=200, n_contr=500, n_socios=300)[0]
     pd.testing.assert_frame_equal(a, b)
+
+def test_ficticio_tem_a_coluna_de_valor_replicado(fic):
+    assert fic[0]["valor_replicado"].dtype == bool
+
+
+def test_marca_valor_replicado():
+    df = pd.DataFrame({
+        "orgao": ["A", "A", "A", "A", "B", "B", "C", "C"],
+        "cnpj_raiz": ["1", "2", "3", "1", "4", "5", "6", "7"],
+        "valor": [2e7, 2e7, 2e7, 2e7, 2e7, 2e7, 5e6, 5e6],
+    })
+    r = dados.marcar_replicados(df)
+    # A: 3 fornecedores com o mesmo valor; B: só 2; C: abaixo de R$ 10 mi
+    assert r["valor_replicado"].tolist() == [True] * 4 + [False] * 4

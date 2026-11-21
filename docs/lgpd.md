@@ -1,44 +1,44 @@
-# Parecer de LGPD e dados abertos
+# Parecer de LGPD do projeto
 
-Projeto: Contratações Públicas e Fornecedores Societários. Rascunho de 20/11/2026, para revisão da professora. O grupo não é assessoria jurídica.
+Análise do grupo, de caráter acadêmico. Não é parecer jurídico.
 
-## 1. Dados tratados e finalidade
+## 1. Finalidade e base
+- **Finalidade:** estudo estatístico sobre quem controla as empresas que recebem dinheiro público, em trabalho de Big Data e Analytics.
+- **Dados de origem públicos:** contratos do PNCP (Lei 14.133/2021, publicidade obrigatória) e cadastro CNPJ da Receita Federal (dados abertos).
+- **Enquadramento:** tratamos o projeto como de fins exclusivamente acadêmicos (LGPD, art. 4º, II, "b"), observando mesmo assim os princípios do art. 6º (finalidade, adequação, necessidade) e a regra do art. 7º, § 3º, para dados de acesso público.
 
-- **Contratos públicos** (PNCP): órgão, fornecedor, valor, objeto, datas.
-- **Cadastro de CNPJ** (Receita Federal): empresas, estabelecimentos e quadro societário (nome, qualificação, data de entrada, faixa etária, CPF já mascarado pela Receita).
-- **Tabelas agregadas** do IBGE (nomes e cor/raça por município).
+## 2. Dados pessoais envolvidos
+| Dado | Origem | Tratamento |
+|---|---|---|
+| Nome e máscara do CPF de sócios (pessoas físicas) | Receita | só em memória e em arquivos locais em `data/`; nunca no banco, no Git ou no painel |
+| Primeiro nome do sócio | Receita | consultado na API de nomes do IBGE; só o primeiro nome vai à API; o cache local guarda nome e frequência |
+| Gênero inferido | derivado | guardado como F, M ou I, com a confiança |
+| Identificador do sócio | derivado | SHA-256 de `ID_SALT` + máscara do CPF + nome completo normalizado, 16 caracteres |
+| Razão social de empresário individual | Receita | substituída por texto genérico no banco, porque contém o nome da pessoa |
+| Raiz de CNPJ, razão social de empresas, valores de contrato | PNCP e Receita | dados de pessoas jurídicas, públicos, mostrados no painel |
 
-Finalidade: estudo acadêmico de interesse público sobre a distribuição de recursos públicos e a composição do controle das empresas fornecedoras. O trabalho descreve padrões agregados; não avalia, nem identifica, pessoas.
+## 3. Medidas de minimização e proteção
+1. O banco não tem coluna de nome nem de CPF. Dois testes automáticos (`tests/test_regras.py`) falham se aparecer coluna com "nome" ou "cpf", ou valor com formato de CPF nos Parquet de saída.
+2. O sócio só existe no banco como hash com sal. O sal está no `.env`, fora do Git. Sem o sal e os dados de origem, não há como recuperar a pessoa a partir do banco.
+3. A classe de controle (feminino, masculino, misto) é calculada por empresa, mas o painel nunca a mostra por empresa: só agregados.
+4. O painel oculta qualquer grupo com menos de 5 fornecedores (RN-09), inclusive no drill-down.
+5. Segredos (token do Aiven, `DATABASE_URL`, `ID_SALT`) ficam em variáveis de ambiente e em Secrets. Um token exposto em tela foi revogado.
+6. O banco é de acesso restrito por credencial; o painel público lê dados já agregados na tela, sem exportação de linhas por sócio.
 
-## 2. Base e natureza dos dados
+## 4. O que o projeto não faz
+- **Não infere nem armazena cor/raça de pessoas.** A leitura racial é um proxy territorial: o percentual de pretos e pardos do município do fornecedor (Censo 2022). Cor/raça é dado pessoal sensível (art. 5º, II) e foi evitado por desenho.
+- **Não cruza com o TSE.** O cadastro de candidaturas traz cor/raça autodeclarada ligada a nome; cruzá-lo permitiria atribuir cor/raça a pessoas reais. Foi rejeitado.
+- **Não identifica pessoas no painel.** Sócios aparecem só como identificador anônimo, e o painel não os lista.
 
-- Os contratos e o cadastro de CNPJ são dados abertos, publicados por força da Lei 12.527/2011 (Lei de Acesso à Informação) e do Decreto 8.777/2016 (Política de Dados Abertos).
-- **Nome de sócio é dado pessoal** mesmo sendo público. O tratamento respeita a finalidade, a boa-fé e o interesse público que justificaram a publicação (LGPD, art. 7º, § 3º), e a finalidade de estudo por órgão de pesquisa com anonimização sempre que possível (art. 7º, IV). O enquadramento do grupo como estudo acadêmico fica a confirmar com a professora.
-- **Cor/raça é dado pessoal sensível** (LGPD, art. 5º, II, origem racial ou étnica). Não é inferida para nenhum indivíduo.
-- **Gênero** não consta da lista do art. 5º, II, mas o resultado é uma inferência estatística sobre o primeiro nome. O grupo o trata com o mesmo cuidado: nunca é exibido por pessoa.
-
-## 3. Medidas adotadas
-
-| Medida | Como |
+## 5. Riscos residuais
+| Risco | Tratamento |
 |---|---|
-| Minimização | Só as colunas usadas pelas regras entram no pipeline. Descartados: endereço, telefone, e-mail, CEP, dados do representante legal, país do sócio e o campo `usuarioNome` do PNCP (quem enviou o contrato, que pode ser pessoa física). |
-| CPF | Nunca armazenado. A máscara fornecida pela Receita só serve para derivar o identificador do sócio. |
-| Nome do sócio | Usado só em memória e em arquivos locais não versionados (`data/`), para inferir o gênero pelo primeiro nome (RN-04). **Não é carregado no banco.** O banco guarda um identificador derivado (hash). |
-| Agregação mínima | Nenhum recorte do painel exibe resultado com menos de 5 sócios ou 5 empresas (RN-09), pelo mesmo princípio com que o IBGE suprime nomes de baixa frequência. |
-| Fornecedor pessoa física | Fora da cadeia societária. O nome não é exibido. |
-| Razão social de empresário individual | Costuma ser o nome da pessoa; não é exibida no painel. |
-| Segredos e repositório | `.env`, `*.tfstate` e `data/` fora do Git; token em variável de ambiente. |
+| Gênero inferido pelo nome pode errar e reforçar estereótipos | uso só agregado; indeterminados declarados (4,3%); limiar de 90%; limitação no README |
+| Reidentificação combinando filtros do painel | mínimo de 5 fornecedores por grupo; classe de controle nunca por empresa |
+| Homônimos no identificador do sócio | declarado como limitação; hash inclui a máscara do CPF |
+| Arquivos locais com nomes de sócios (`data/interim/receita_filtrada`) | fora do Git; disco do grupo; apagar ao fim da disciplina |
+| Leitura causal do proxy racial (falácia ecológica) | aviso fixo na aba Interseccional e no README |
+| Espelho de terceiros como fonte da Receita | declarado; a origem é a Receita Federal |
 
-## 4. Caminho rejeitado: reidentificação por cruzamento
-
-Existem bases com cor/raça autodeclarada e nome de pessoa física, como as de candidaturas do TSE. Cruzar o nome do sócio com essas bases permitiria atribuir cor/raça a um indivíduo, o que é reidentificação de dado sensível e foge da finalidade original da publicação. O grupo considerou e **rejeitou** esse caminho.
-
-## 5. Alternativa adotada
-
-Proxy ecológico (RN-06): a composição de cor/raça do município da sede (Censo 2022) e do setor CNAE (RAIS ou Novo CAGED) é atribuída ao contexto da empresa, e nunca a uma pessoa. A limitação é nomeada: o indicador descreve para onde o recurso público flui, em termos de perfil setorial e territorial, e não afirma nada sobre os sócios.
-
-## 6. Limitações
-
-- A inferência de gênero é probabilística. Há uma taxa de indeterminados, que é reportada.
-- A contagem é por cabeça: o percentual de participação de cada sócio não consta dos dados abertos.
-- O quadro societário é o atual, e os contratos são de 2025.
+## 6. Retenção
+Os arquivos de `data/` e o banco do Aiven existem só para a disciplina. Após a entrega e a avaliação: apagar `data/`, destruir o serviço (`terraform destroy`) e revogar tokens.

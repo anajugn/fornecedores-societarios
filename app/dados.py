@@ -37,6 +37,21 @@ WHERE c.valor_global > 0
 """
 SQL_PONTE = "SELECT cnpj_raiz, sk_socio FROM ponte_empresa_socio WHERE elegivel"
 
+MIN_REPLICADO = 10_000_000       # R$ 10 mi
+MIN_FORN_REPLICADO = 3
+
+
+def marcar_replicados(df):
+    """Contratos do mesmo órgão com o mesmo valor (>= R$ 10 mi) em 3+ fornecedores diferentes.
+    Indício de que o valor é o teto de um credenciamento ou ata repetido em cada contrato."""
+    df = df.copy()
+    df["valor_replicado"] = False
+    alto = df[df["valor"] >= MIN_REPLICADO]
+    if alto.empty:
+        return df
+    n = alto.groupby(["orgao", "valor"])["cnpj_raiz"].transform("nunique")
+    df.loc[n.index, "valor_replicado"] = (n >= MIN_FORN_REPLICADO).to_numpy()
+    return df
 
 def preparar(df):
     """Tipos, rótulos e faixas usados pelo painel."""
@@ -55,7 +70,7 @@ def preparar(df):
     df["porte"] = df["porte"].fillna("Não informado")
     for c in ("uf_orgao", "uf_fornecedor", "municipio_fornecedor"):
         df[c] = df[c].fillna("—")
-    return df.reset_index(drop=True)
+    return marcar_replicados(df.reset_index(drop=True))
 
 
 def banco(url):

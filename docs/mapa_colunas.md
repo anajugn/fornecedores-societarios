@@ -1,44 +1,72 @@
-# Mapa de colunas: o que entra, o que sai e por quê
+# Dicionário de dados do banco (9 tabelas)
 
-Atualizado em 20/11/2026. Os nomes dos campos do PNCP vêm do JSON real; as colunas da Receita seguem o layout oficial (`gov.br/receitafederal/dados/cnpj-metadados.pdf`), conferido contra os arquivos lidos.
+Definição em `etl/sql/schema.sql`; carga por `etl/07_carregar_aiven.py`.
 
-## PNCP, `/v1/contratos` (43 campos no retorno)
-
-| Campo | Destino | Uso |
+## fato_contrato (190.806 linhas)
+| Coluna | Tipo | Origem e regra |
 |---|---|---|
-| `numeroControlePNCP` | `numero_controle_pncp` | chave de deduplicação; PK do fato |
-| `numeroControlePncpCompra` | `numero_controle_pncp_compra` | liga à compra (onde estaria a modalidade, não coletada) |
-| `niFornecedor`, `tipoPessoa` | `cnpj_raiz_fornecedor` (só PJ com 14 dígitos), `tipo_pessoa` (PJ, PF, PE) | RN-01, chave com a Receita |
-| `nomeRazaoSocialFornecedor` | `nome_fornecedor` | exibição só de PJ |
-| `valorGlobal` | `valor_global` | métrica principal; RN-02 |
-| `valorInicial`, `valorParcela`, `valorAcumulado` | `valor_*` | métricas secundárias; `[a medir: % zerado]` |
-| `receita` | `receita` | RN-02 (exclui `true`) |
-| `dataAssinatura` | `data_assinatura` | RN-02, RN-08 |
-| `dataPublicacaoPncp` | `data_publicacao` | partição e controle de coleta |
-| `dataVigenciaInicio`, `dataVigenciaFim` | `data_vigencia_*` | `prazo_dias` |
-| `dataAtualizacaoGlobal` | `data_atualizacao_global` | desempate na deduplicação |
-| `orgaoEntidade.*` | `dim_orgao` | quem contrata |
-| `unidadeOrgao.ufSigla`, `.municipioNome`, `.codigoIbge` | município do órgão | filtros do painel |
-| `tipoContrato`, `categoriaProcesso` | `dim_modalidade` (substituto) | o contrato não traz modalidade de licitação |
-| `objetoContrato` | `objeto_contrato` | texto livre; drill-down e busca |
+| numero_controle_pncp | text, PK | PNCP; identificador do contrato |
+| sk_orgao | integer, FK | `dim_orgao` pelo CNPJ do órgão |
+| cnpj_raiz_fornecedor | char(8), FK | 8 primeiros dígitos do CNPJ do fornecedor (RN-01); nulo para PF, estrangeiro e raiz sem cadastro |
+| sk_tempo | integer, FK | data de assinatura em `yyyymmdd` |
+| sk_modalidade | integer, FK | `dim_modalidade`, chave `tipo_contrato_id * 100 + categoria_processo_id` |
+| codigo_ibge | char(7) | município da unidade contratante (não do fornecedor) |
+| valor_global | numeric(18,2) | PNCP; valor contratado (> 0 e ≤ R$ 1 bi, RN-02) |
+| valor_parcela | numeric(18,2) | PNCP; nulo em 29,7% dos contratos |
+| prazo_dias | integer | dias entre início e fim da vigência; nulo se o fim for anterior ao início |
+| objeto_contrato | text | PNCP; truncado em 500 caracteres |
+| sancionado_na_assinatura | boolean | RN-08, não implementada (sempre falso) |
 
-**Não lidos** (22 campos): `usuarioNome` (quem enviou o contrato, pode ser pessoa física), `informacaoComplementar`, `processo`, `numeroContratoEmpenho`, `anoContrato`, `sequencialContrato`, `numeroRetificacao`, `numeroParcelas`, `temRemanejamento`, `emendaParlamentar`, `frutoAdesao`, `identificadorCipi`, `urlCipi`, `orgaoSubRogado`, `unidadeSubRogada`, `codigoPaisFornecedor`, `numeroControlePncpAta`, os três campos de subcontratada, `unidadeOrgao.ufNome`, `.nomeUnidade` e `.codigoUnidade`. Nenhum serve às perguntas Q1 a Q3.
-
-## Receita Federal
-
-| Arquivo | Usadas | Descartadas |
+## dim_fornecedor (28.235)
+| Coluna | Tipo | Origem e regra |
 |---|---|---|
-| Sócios (11 colunas) | `cnpj_basico` (chave), `identificador_socio` (1 PJ, 2 PF, 3 estrangeiro), `nome_socio` (só o 1º nome, em memória, para a RN-04), `cnpj_cpf_socio` (só a máscara, para o id derivado), `qualificacao_socio` (RN-03), `data_entrada_sociedade`, `faixa_etaria` | `pais` (99,4% vazio), `representante_legal` (vem como `***000000**` quando não há), `nome_representante` (97,0% vazio), `qualificacao_representante_legal` |
-| Empresas (7) | `cnpj_basico`, `razao_social`, `natureza_juridica`, `porte`, `capital_social` | `qualificacao_responsavel`, `ente_federativo` |
-| Estabelecimentos (30) | `cnpj_basico`, `cnpj_ordem`, `cnpj_dv`, `identificador_matriz_filial` (usar a matriz), `situacao_cadastral`, `cnae_principal`, `uf`, `municipio` | `nome_fantasia`, `cnae_secundaria`, endereço (`tipo_logradouro`, `logradouro`, `numero`, `complemento`, `bairro`, `cep`), telefones e fax, `correio_eletronico`, `pais`, `nome_cidade_exterior`, datas e motivo de situação |
-| Domínio | Cnaes, Municípios, Naturezas, Qualificações | Motivos, Países, Simples |
+| cnpj_raiz | char(8), PK | raiz do CNPJ |
+| razao_social | text | Receita; "EMPRESARIO INDIVIDUAL (NOME OMITIDO)" para natureza 2135 |
+| porte | text | código 01 Microempresa; 03 Empresa de pequeno porte; 05 Demais; outro: Não informado |
+| natureza_juridica | text | "código - descrição" (domínio da Receita) |
+| cnae_principal | char(7) | CNAE do estabelecimento (matriz primeiro) |
+| codigo_ibge | char(7) | município do estabelecimento, traduzido do código da Receita; nulo em 20 fornecedores |
+| uf | char(2) | UF do estabelecimento |
+| classificacao_controle | text | feminino, masculino, misto_indeterminado ou sem_socio (RN-05) |
+| n_socios_elegiveis | smallint | sócios elegíveis pela RN-03 |
+| pct_indeterminados | numeric(5,2) | % de elegíveis com gênero indeterminado |
 
-Atenção: o código de município da Receita (4 dígitos) não é o código IBGE (7 dígitos). A tradução usa nome e UF, a partir da tabela de municípios da Receita e da API de localidades do IBGE.
-
-## Fontes complementares
-
-| Uso | Fonte | Chave |
+## dim_socio (48.952) e ponte_empresa_socio (51.393)
+| Coluna | Tipo | Origem e regra |
 |---|---|---|
-| Gênero (RN-04) | API de nomes do IBGE | primeiro nome normalizado (maiúsculas, sem acento) |
-| Cor/raça territorial (RN-06) | SIDRA, Censo 2022, tabela 9605 `[CONFIRMAR]` | código IBGE do município (7 dígitos) |
-| Cor/raça setorial (RN-06) | RAIS ou Novo CAGED `[escopo condicional]` | CNAE |
+| dim_socio.sk_socio | serial, PK | chave substituta |
+| dim_socio.id_derivado | text, único | hash de 16 caracteres (sal + máscara do CPF + nome); nunca o CPF |
+| dim_socio.tipo | char(2) | PF, PJ ou ES (identificador de sócio 2, 1 ou 3) |
+| dim_socio.genero | char(1) | F, M ou I (RN-04, limiar de 90%); sempre I para PJ e ES |
+| dim_socio.confianca | numeric(4,3) | maior frequência de gênero do primeiro nome, de 0 a 1 |
+| dim_socio.faixa_etaria | smallint | código da faixa etária da Receita |
+| ponte.cnpj_raiz, sk_socio | PK composta com `qualificacao` | vínculo empresa e sócio |
+| ponte.qualificacao | text | descrição da qualificação do sócio |
+| ponte.data_entrada | date | data de entrada na sociedade |
+| ponte.elegivel | boolean | sócio conta para o controle (RN-03) |
+
+## Dimensões menores
+| Tabela | Colunas | Observação |
+|---|---|---|
+| dim_orgao (50) | sk_orgao, orgao_cnpj (14), razao_social, esfera_id, poder_id | os 50 maiores por valor |
+| dim_municipio (5.570) | codigo_ibge (7), nome, uf, populacao, pct_negra, pct_branca | Censo 2022; `pct_negra` = preta + parda |
+| dim_cnae (1.359) | cnae (7), descricao, pct_negra_setor, pct_mulher_setor | as duas últimas não são preenchidas |
+| dim_modalidade (54) | sk_modalidade, id_origem, nome | "tipo de contrato \| categoria do processo" |
+| dim_tempo (365) | sk_tempo (yyyymmdd), data, ano, mes, trimestre | calendário de 2025 |
+
+## Arquivos intermediários e de saída
+| Arquivo | Colunas | Gerado por |
+|---|---|---|
+| socios_classificados.parquet | cnpj_basico, id_derivado, tipo, genero, confianca, qualificacao_socio, qual_desc, data_entrada_sociedade, faixa_etaria, elegivel | `06` |
+| empresas_classificadas.parquet | cnpj_basico, classificacao_controle, motivo, n_socios_total, n_socios_elegiveis, pct_indeterminados, tem_socio_pj, n_f, n_m, n_i | `06` |
+| municipios_cor_raca.parquet | codigo_ibge, nome, uf, populacao, pct_negra, pct_branca, pct_preta, pct_parda, pct_amarela, pct_indigena | `08` |
+| municipios_receita_ibge.parquet | cod_receita (4 dígitos), uf, codigo_ibge (7 dígitos) | `08` |
+
+## Agregados materializados (`etl/sql/agregados.sql`)
+| Visão | Conteúdo |
+|---|---|
+| mv_valor_por_classe | contratos, fornecedores, valor total e mediano por classe de controle |
+| mv_genero_por_uf | o mesmo por UF do fornecedor e classe (só grupos com 5+ fornecedores) |
+| mv_genero_por_faixa_racial | o mesmo por faixa de pretos e pardos e classe (só grupos com 5+ fornecedores) |
+| mv_fornecedor_valor | valor por fornecedor (concentração), sem a classe |
+| mv_socios_compartilhados | quantos sócios aparecem em 1, 2, 3, 4 ou 5+ fornecedores |

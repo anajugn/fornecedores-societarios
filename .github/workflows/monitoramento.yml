@@ -7,10 +7,15 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   verificar:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      ID_SALT: ci-sem-dados-reais
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,8 +23,8 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
-      - name: Testes
-        run: python -m pytest tests -q
+      - name: Testes (os que dependem de data/ são ignorados no runner)
+        run: python -m pytest tests -q -rs
       - name: Saúde das fontes e do banco
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

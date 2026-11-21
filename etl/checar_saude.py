@@ -16,13 +16,20 @@ FONTES = [
 ]
 
 
-def http(url, params):
-    t = time.perf_counter()
-    try:
-        r = requests.get(url, params=params, timeout=60)
-        return r.status_code == 200, f"HTTP {r.status_code} em {(time.perf_counter() - t) * 1000:.0f} ms"
-    except requests.RequestException as e:
-        return False, f"erro: {type(e).__name__}"
+def http(url, params, tentativas=3):
+    ultimo = ""
+    for i in range(tentativas):
+        t = time.perf_counter()
+        try:
+            r = requests.get(url, params=params, timeout=60, headers={"User-Agent": "monitoramento-academico"})
+            ms = (time.perf_counter() - t) * 1000
+            if r.status_code in (200, 204):
+                return True, f"HTTP {r.status_code} em {ms:.0f} ms"
+            ultimo = f"HTTP {r.status_code} em {ms:.0f} ms: {r.text[:120]!r}"
+        except requests.RequestException as e:
+            ultimo = f"erro: {type(e).__name__}"
+        time.sleep(2 ** i)
+    return False, f"{ultimo} (após {tentativas} tentativas)"
 
 
 def banco(url):
@@ -55,7 +62,8 @@ def main():
         linhas.append("PULOU PostgreSQL: DATABASE_URL não definido")
     texto = "\n".join(linhas)
     print(texto)
-    open("saude.log", "w", encoding="utf-8").write(texto + "\n")
+    with open("saude.log", "w", encoding="utf-8") as f:
+        f.write(texto + "\n")
     sys.exit(0 if ok else 1)
 
 
