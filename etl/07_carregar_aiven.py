@@ -1,7 +1,8 @@
 """Fase 2: carrega o modelo estrela no PostgreSQL do Aiven (só o recorte).
 
 Entradas (locais, em data/): contratos_recorte.parquet (03), receita_filtrada (05),
-socios_classificados e empresas_classificadas (06).
+socios_classificados e empresas_classificadas (06), municipios_cor_raca e
+municipios_receita_ibge (08).
 Nenhum nome de sócio e nenhum CPF chega ao banco (RN-09).
 
 Uso:
@@ -24,6 +25,8 @@ RF = INTERIM / "receita_filtrada"
 RECORTE = INTERIM / "contratos_recorte.parquet"
 SOC = PROCESSED / "socios_classificados.parquet"
 EMP = PROCESSED / "empresas_classificadas.parquet"
+MUN = PROCESSED / "municipios_cor_raca.parquet"
+TRAD = PROCESSED / "municipios_receita_ibge.parquet"
 INDICES = ROOT / "etl" / "sql" / "indices.sql"
 NULO = "\\N"
 LIMITE_MB = 600
@@ -32,7 +35,8 @@ TABELAS = ["fato_contrato", "ponte_empresa_socio", "dim_socio", "dim_fornecedor"
 
 
 def preparar(con):
-    rec, socp, empp, rf = (RECORTE.as_posix(), SOC.as_posix(), EMP.as_posix(), RF.as_posix())
+    rec, socp, empp, rf, mun, trad = (RECORTE.as_posix(), SOC.as_posix(), EMP.as_posix(),
+                                      RF.as_posix(), MUN.as_posix(), TRAD.as_posix())
     d = {}
 
     tempo, dia = [], DATA_INI
@@ -46,9 +50,18 @@ def preparar(con):
                any_value(esfera_id), any_value(poder_id)
         FROM '{rec}' WHERE orgao_cnpj IS NOT NULL GROUP BY 1""").fetchall()
 
+    # todos os municípios do Censo 2022 (com proxy racial) + municípios do PNCP que faltarem
     d["dim_municipio"] = con.execute(f"""
-        SELECT left(codigo_ibge, 7), any_value(municipio_nome), any_value(uf_sigla)
-        FROM '{rec}' WHERE codigo_ibge IS NOT NULL GROUP BY 1""").fetchall()
+        SELECT codigo_ibge, nome, uf, CAST(populacao AS VARCHAR),
+               CAST(pct_negra AS VARCHAR), CAST(pct_branca AS VARCHAR)
+        FROM '{mun}'
+        UNION ALL
+        SELECT left(codigo_ibge, 7), any_value(municipio_nome), any_value(uf_sigla),
+               CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR)
+        FROM '{rec}'
+        WHERE codigo_ibge IS NOT NULL
+          AND left(codigo_ibge, 7) NOT IN (SELECT codigo_ibge FROM '{mun}')
+        GROUP BY 1""").fetchall()
 
     d["dim_cnae"] = con.execute(f"""
         SELECT lpad(codigo, 7, '0'), any_value(descricao)
@@ -62,14 +75,16 @@ def preparar(con):
 
     d["dim_fornecedor"] = con.execute(f"""
         WITH est AS (
-            SELECT cnpj_basico, cnae_principal, uf
+            SELECT cnpj_basico, cnae_principal, uf, municipio
             FROM read_parquet('{rf}/Estabelecimentos_*.parquet')
             QUALIFY row_number() OVER (PARTITION BY cnpj_basico
                                        ORDER BY identificador_matriz_filial, cnpj_ordem) = 1),
         emp AS (
             SELECT * FROM read_parquet('{rf}/Empresas_*.parquet')
             QUALIFY row_number() OVER (PARTITION BY cnpj_basico ORDER BY razao_social) = 1),
-        nat AS (SELECT codigo, descricao FROM read_parquet('{rf}/dominio_naturezas.parquet'))
+        nat AS (SELECT codigo, descricao FROM read_parquet('{rf}/dominio_naturezas.parquet')),
+        trad AS (SELECT cod_receita, uf, any_value(codigo_ibge) AS codigo_ibge
+                 FROM read_parquet('{trad}') GROUP BY 1, 2)
         SELECT emp.cnpj_basico,
                CASE WHEN emp.natureza_juridica = '2135' THEN 'EMPRESARIO INDIVIDUAL (NOME OMITIDO)'
                     ELSE emp.razao_social END,
@@ -77,7 +92,7 @@ def preparar(con):
                               WHEN '05' THEN 'Demais' ELSE 'Não informado' END,
                emp.natureza_juridica || ' - ' || coalesce(nat.descricao, ''),
                lpad(est.cnae_principal, 7, '0'),
-               CAST(NULL AS VARCHAR),
+               trad.codigo_ibge,
                est.uf,
                cls.classificacao_controle,
                CAST(cls.n_socios_elegiveis AS VARCHAR),
@@ -85,7 +100,8 @@ def preparar(con):
         FROM emp
         JOIN read_parquet('{empp}') AS cls ON cls.cnpj_basico = emp.cnpj_basico
         LEFT JOIN est ON est.cnpj_basico = emp.cnpj_basico
-        LEFT JOIN nat ON nat.codigo = emp.natureza_juridica""").fetchall()
+        LEFT JOIN nat ON nat.codigo = emp.natureza_juridica
+        LEFT JOIN trad ON trad.cod_receita = est.municipio AND trad.uf = est.uf""").fetchall()
 
     d["dim_socio"] = con.execute(f"""
         SELECT id_derivado, any_value(tipo), any_value(genero),
@@ -118,6 +134,7 @@ def preparar(con):
 
 def verificar(d):
     forn = {r[0] for r in d["dim_fornecedor"]}
+    municipios = {r[0] for r in d["dim_municipio"]}
     print("linhas preparadas:")
     for k, v in d.items():
         print(f"  {k:<16} {len(v):>9,}")
@@ -127,11 +144,16 @@ def verificar(d):
     chaves = [(r[0], r[1], r[2]) for r in d["ponte"]]
     dup_ponte = len(chaves) - len(set(chaves))
     dup_fato = len(d["fato"]) - len({r[0] for r in d["fato"]})
+    dup_forn = len(d["dim_fornecedor"]) - len(forn)
+    sem_ibge = sum(1 for r in d["dim_fornecedor"] if not r[5])
+    fato_sem_mun = sum(1 for r in d["fato"] if r[5] and r[5] not in municipios)
     print(f"\ncontratos com fornecedor PF, estrangeiro ou sem CNPJ válido (raiz nula): {sem_raiz:,}")
     print(f"contratos com raiz de CNPJ sem cadastro na Receita filtrada: {raiz_sem_cadastro:,}")
     print(f"vínculos de sócios fora de dim_fornecedor: {ponte_fora:,}")
-    print(f"chaves repetidas: ponte {dup_ponte:,} | fato {dup_fato:,}")
-    if ponte_fora or dup_ponte or dup_fato:
+    print(f"fornecedores sem código IBGE de município: {sem_ibge:,} de {len(d['dim_fornecedor']):,}")
+    print(f"contratos com município fora de dim_municipio: {fato_sem_mun:,}")
+    print(f"chaves repetidas: ponte {dup_ponte:,} | fato {dup_fato:,} | fornecedor {dup_forn:,}")
+    if ponte_fora or dup_ponte or dup_fato or dup_forn:
         sys.exit("corrija os itens acima antes de carregar")
 
 
@@ -181,7 +203,8 @@ def carregar(d, recarregar):
         print("carregando:")
         copiar(cur, "dim_tempo", ["sk_tempo", "data", "ano", "mes", "trimestre"], d["dim_tempo"])
         copiar(cur, "dim_orgao", ["orgao_cnpj", "razao_social", "esfera_id", "poder_id"], d["dim_orgao"])
-        copiar(cur, "dim_municipio", ["codigo_ibge", "nome", "uf"], d["dim_municipio"])
+        copiar(cur, "dim_municipio",
+               ["codigo_ibge", "nome", "uf", "populacao", "pct_negra", "pct_branca"], d["dim_municipio"])
         copiar(cur, "dim_cnae", ["cnae", "descricao"], d["dim_cnae"])
         copiar(cur, "dim_modalidade", ["id_origem", "nome"], d["dim_modalidade"])
         copiar(cur, "dim_fornecedor",
@@ -231,9 +254,9 @@ def main():
     ap.add_argument("--recarregar", action="store_true")
     a = ap.parse_args()
 
-    for p in (RECORTE, SOC, EMP):
+    for p in (RECORTE, SOC, EMP, MUN, TRAD):
         if not p.exists():
-            sys.exit(f"não achei {p}: rode antes os scripts 03, 05 e 06")
+            sys.exit(f"não achei {p}: rode antes os scripts 03, 05, 06 e 08")
     for padrao in ("Empresas_*.parquet", "Estabelecimentos_*.parquet",
                    "dominio_cnaes.parquet", "dominio_naturezas.parquet"):
         if not list(RF.glob(padrao)):

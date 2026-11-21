@@ -84,4 +84,4 @@ tests/test_unitarios.py::test_contagens_de_socios PASSED                 [ 97%]
 tests/test_unitarios.py::test_pct_indeterminados PASSED                  [ 98%]
 tests/test_unitarios.py::test_regra_estrita_pode_inverter_o_controle PASSED [100%]
 
-============================= 78 passed in 2.28s ==============================
+============================= 78 passed in 3.31s ==============================
