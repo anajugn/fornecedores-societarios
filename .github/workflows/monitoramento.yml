@@ -1,0 +1,31 @@
+name: monitoramento
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"        # segundas, 09:00 UTC (06:00 em Brasília)
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Testes
+        run: python -m pytest tests -q
+      - name: Saúde das fontes e do banco
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python etl/checar_saude.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: log-saude
+          path: saude.log
