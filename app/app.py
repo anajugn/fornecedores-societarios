@@ -91,6 +91,9 @@ except Exception as erro:
             "inatividade) e se a DATABASE_URL está correta.")
     st.stop()
 
+if "valor_replicado" not in contratos.columns:      # cache antigo, de antes da marcação
+    contratos = dados.marcar_replicados(contratos)
+
 # ------------------------------------------------------------------ seleção por clique (filtro cruzado)
 if "reset" not in st.session_state:
     st.session_state["reset"] = 0
@@ -122,6 +125,15 @@ f_porte = st.sidebar.multiselect("Porte do fornecedor", sorted(contratos["porte"
 f_faixa = st.sidebar.multiselect("Faixa de valor do contrato", dados.FAIXAS_VALOR)
 f_meses = st.sidebar.slider("Meses de assinatura", 1, 12, (1, 12))
 
+st.sidebar.header("Cenários de valor")
+st.sidebar.caption("Poucos contratos concentram boa parte do valor (README, seções 7.2 e 9.4).")
+f_sem_gigantes = st.sidebar.checkbox("Excluir contratos acima de R$ 100 mi")
+f_sem_ciminas = st.sidebar.checkbox("Excluir o CIMINAS (consórcio de MG)")
+f_sem_repl = st.sidebar.checkbox(
+    "Excluir valores possivelmente replicados",
+    help="Contratos do mesmo órgão com o mesmo valor (R$ 10 mi ou mais) em 3 ou mais fornecedores "
+         "diferentes. Pode ser o teto de um credenciamento repetido em cada contrato.")
+
 
 def filtrar(ignorar=()):
     """Aplica todos os filtros. `ignorar` deixa de fora a seleção por clique do próprio gráfico."""
@@ -137,6 +149,12 @@ def filtrar(ignorar=()):
         m &= d["porte"].isin(f_porte)
     if f_faixa:
         m &= d["faixa_valor"].isin(f_faixa)
+    if f_sem_gigantes:
+        m &= d["valor"] <= TETO
+    if f_sem_ciminas:
+        m &= ~d["orgao"].str.contains("CIMINAS", na=False)
+    if f_sem_repl:
+        m &= ~d["valor_replicado"]
     if "classe" not in ignorar and sel_classe:
         m &= d["classe"].isin(sel_classe)
     if "uf" not in ignorar and sel_uf:
@@ -246,6 +264,12 @@ else:
     st.warning("**DADOS FICTÍCIOS.** Este painel está rodando com dados sintéticos só para testar a "
                "interface. Nenhum número aqui descreve contratos ou empresas reais.")
 
+cenarios = [txt for txt, ligado in (("sem contratos acima de R$ 100 mi", f_sem_gigantes),
+                                    ("sem o CIMINAS", f_sem_ciminas),
+                                    ("sem valores possivelmente replicados", f_sem_repl)) if ligado]
+if cenarios:
+    st.info("**Cenário de valor ativo:** " + ", ".join(cenarios) + ". Os números abaixo não são os da base inteira.")
+
 d = filtrar()
 if d.empty:
     st.info("Nenhum contrato com esses filtros.")
@@ -277,6 +301,11 @@ with t1:
     c4.metric("Valor com controle definido",
               pct(100 * definido["valor"].sum() / d["valor"].sum()),
               help="Feminino + masculino. O restante é misto/indeterminado ou sem sócio elegível.")
+
+    rep = d[d["valor_replicado"]]
+    st.caption(f"Valores possivelmente replicados neste recorte: {inteiro(len(rep))} contratos, "
+               f"{pct(100 * rep['valor'].sum() / d['valor'].sum())} do valor. "
+               "A barra lateral permite retirá-los.")
 
     esq, dir_ = st.columns(2)
     with esq:
@@ -376,7 +405,9 @@ with t3:
     a.metric("10 maiores fornecedores", pct(100 * top10), help="Parcela do valor contratado.")
     b.metric(f"1% maiores ({k1pct} fornecedores)", pct(100 * top1))
     c.metric("Índice de Gini", _ptbr(f"{gini:.3f}"), help="0 = valor igual para todos; 1 = tudo em um só.")
-    e.metric("HHI", inteiro(hhi), help="Herfindahl-Hirschman, de 0 a 10.000. Abaixo de 1.500 é pouco concentrado.")
+    e.metric("HHI", inteiro(hhi),
+             help="Herfindahl-Hirschman sobre todos os fornecedores, de mercados distintos. Valor baixo "
+                  "indica que nenhum fornecedor domina, não que o mercado seja competitivo.")
 
     acum = np.concatenate([[0.0], np.cumsum(v) / total])
     x = np.arange(0, n + 1) / n
@@ -424,7 +455,7 @@ with t3:
                           yaxis_title="sócios", height=300, margin=dict(t=30, b=10, l=10, r=10))
         st.plotly_chart(fig)
         st.caption("Conta só os fornecedores do recorte (50 órgãos), então subestima a rede real do sócio. "
-                   "Sócios aparecem por identificador anônimo.")
+                   "Sócios aparecem por identificador anônimo, e homônimos podem ser contados como a mesma pessoa.")
 
 # ------------------------------------------------------------------ drill-down
 with t4:
@@ -463,9 +494,10 @@ with t4:
                     "Data": top["data"].dt.strftime("%d/%m/%Y"), "Fornecedor": top["fornecedor"],
                     "Porte": top["porte"], "UF do fornecedor": top["uf_fornecedor"],
                     "Modalidade": top["modalidade"], "Valor (R$)": top["valor"].round(2),
+                    "Valor possivelmente replicado": top["valor_replicado"].map({True: "sim", False: ""}),
                     "Nº de controle": top["numero_controle"]}), hide_index=True)
 
 st.divider()
-st.caption("Limitações: `valor_global` é o valor contratado, não o pago; anulações não são identificáveis; "
-           "gênero vem do primeiro nome (Censo 2010) e pode errar; cor/raça é proxy territorial. "
-           "Detalhes no README, seção 9.")
+st.caption("Limitações: `valor_global` é o valor contratado, não o pago, e pode repetir o teto de um "
+           "credenciamento em vários contratos; anulações não são identificáveis; gênero vem do primeiro nome "
+           "(Censo 2010) e pode errar; cor/raça é proxy territorial. Detalhes no README, seção 11.")
